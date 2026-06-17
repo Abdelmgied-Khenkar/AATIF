@@ -1,0 +1,358 @@
+#!/usr/bin/env python3
+"""
+AATIF Pipeline Connector — يربط المحرك الجديد بالبايبلاين الحالي
+
+Bridges the new AATIF Intent Engine (v9.7 math, dialect, emotion)
+with the existing aatif-sales-engine pipeline.
+
+The old pipeline expects:
+  - IntentResult with .to_plan_dict() → {surface_intent, hidden_intent, ...}
+  - build_intent_result(text, state, business_type, relationship_context)
+
+This connector:
+  1. Runs the new AATIF Intent Engine (with NLP bridge when available)
+  2. Translates IntentReading → old IntentResult format (backward compatible)
+  3. Adds the new governance signals as extra fields
+
+Usage in api_server.py — replace the old import:
+    # OLD: from intent_engine import build_intent_result
+    # NEW: from aatif_pipeline_connector import build_intent_result
+
+Everything downstream (reply_base_mapper, llm_bridge, output_gate) keeps working.
+The new signals (emotion, dialect, S/F/H, load_bearing) ride along as extra fields.
+
+Architect: Abdulmjeed Ibrahim Khenkar
+"""
+
+import sys
+import os
+from dataclasses import dataclass, field
+from typing import Optional
+
+# ── Import the new Intent Engine ──
+# Try the AATIF folder first, then fall back to same directory
+_AATIF_DIR = os.path.dirname(os.path.abspath(__file__))
+if _AATIF_DIR not in sys.path:
+    sys.path.insert(0, _AATIF_DIR)
+
+from aatif_intent_engine import AATIFIntentEngine, IntentReading
+
+
+# ═══════════════════════════════════════════════════════════
+#  Old IntentResult format (backward compatible)
+# ═══════════════════════════════════════════════════════════
+
+@dataclass
+class IntentLayers:
+    surface: str
+    primary: str
+
+
+@dataclass
+class AnalysisMatrix:
+    why_now_signal: str
+    wrong_answer_risk: str
+    user_knowledge_level: str
+    positioning_mode: str
+    value_focus: list = field(default_factory=list)
+    outcome_mode: str = "none"
+    trust_mode: str = "calm_direct"
+    intent_confidence: str = "medium"
+    ambiguity_flag: bool = False
+    handling_mode: str = "clarify_then_answer"
+    forbidden_moves: list = field(default_factory=list)
+
+
+@dataclass
+class IntentResult:
+    """Backward-compatible IntentResult that the old pipeline understands,
+    enriched with new AATIF governance signals."""
+
+    incoming_text: str
+    normalized_text: str
+    state: str = ""
+    name: str = ""
+    business_type: str = ""
+    greeting: str = ""
+    relationship_context: dict = field(default_factory=dict)
+    intent_layers: IntentLayers = None
+    analysis_matrix: AnalysisMatrix = None
+
+    # ── New AATIF signals (ride along, don't break old code) ──
+    aatif_reading: IntentReading = None
+
+    def to_plan_dict(self) -> dict:
+        """Old format that api_server.py / reply_base_mapper.py expect."""
+        base = {
+            "incoming_text": self.incoming_text,
+            "normalized_text": self.normalized_text,
+            "state": self.state,
+            "name": self.name,
+            "business_type": self.business_type,
+            "greeting": self.greeting,
+            "relationship_context": self.relationship_context or {},
+            "surface_intent": self.intent_layers.surface if self.intent_layers else "default",
+            "hidden_intent": self.intent_layers.primary if self.intent_layers else "none",
+            "why_now_signal": self.analysis_matrix.why_now_signal if self.analysis_matrix else "general",
+            "wrong_answer_risk": self.analysis_matrix.wrong_answer_risk if self.analysis_matrix else "low",
+            "user_knowledge_level": self.analysis_matrix.user_knowledge_level if self.analysis_matrix else "unaware",
+            "positioning_mode": self.analysis_matrix.positioning_mode if self.analysis_matrix else "none",
+            "value_focus": self.analysis_matrix.value_focus if self.analysis_matrix else [],
+            "outcome_mode": self.analysis_matrix.outcome_mode if self.analysis_matrix else "none",
+            "trust_mode": self.analysis_matrix.trust_mode if self.analysis_matrix else "calm_direct",
+            "intent_confidence": self.analysis_matrix.intent_confidence if self.analysis_matrix else "low",
+            "ambiguity_flag": self.analysis_matrix.ambiguity_flag if self.analysis_matrix else True,
+            "handling_mode": self.analysis_matrix.handling_mode if self.analysis_matrix else "clarify_then_answer",
+            "forbidden_moves": self.analysis_matrix.forbidden_moves if self.analysis_matrix else [],
+        }
+
+        # Attach AATIF governance signals as extra keys
+        if self.aatif_reading:
+            r = self.aatif_reading
+            base["aatif"] = {
+                "decision": r.decision,
+                "decision_reason": r.decision_reason,
+                "mode": r.mode,
+                "emotional_state": r.emotional_state,
+                "emotional_confidence": r.emotional_confidence,
+                "load_bearing": r.load_bearing,
+                "dialect": r.dialect_detected,
+                "ambiguity": r.ambiguity_score,
+                "harm": r.harm_score,
+                "softening": r.softening_factor,
+                "skills": r.skills_to_activate,
+                "deep_intent": r.deep_intent,
+            }
+
+        return base
+
+
+# ═══════════════════════════════════════════════════════════
+#  Translation: IntentReading → old pipeline fields
+# ═══════════════════════════════════════════════════════════
+
+# Map AATIF emotional states → old trust_mode
+_EMOTION_TO_TRUST = {
+    "carrying_weight": "gentle_supportive",
+    "lost":            "orient_first",
+    "excited":         "match_energy",
+    "frustrated":      "acknowledge_first",
+    "clear":           "calm_direct",
+}
+
+# Map AATIF decisions → old handling_mode
+_DECISION_TO_HANDLING = {
+    "EXECUTE":     "direct_answer",
+    "CLARIFY":     "clarify_then_answer",
+    "SAFE_STOP":   "refuse_safely",
+    "SAFE_FREEZE": "refuse_safely",
+}
+
+
+def _normalize_text(text):
+    """Lightweight Arabic normalization matching the old intent_engine."""
+    import re
+    t = text.strip()
+    t = re.sub(r'[ًٌٍَُِّْ]', '', t)           # remove diacritics
+    t = t.replace('ة', 'ه').replace('ى', 'ي')   # normalize endings
+    t = re.sub(r'[أإآ]', 'ا', t)                  # normalize alef
+    return t
+
+
+def _detect_greeting(text):
+    """Detect if the message is a greeting and extract the greeting word."""
+    import re
+    low = text.strip().lower()
+    greetings_ar = [
+        "السلام عليكم", "سلام", "مرحبا", "مرحبه", "هلا", "هلا والله",
+        "اهلا", "اهلين", "يا هلا", "حياك", "حياكم",
+    ]
+    greetings_en = [
+        "hello", "hi", "hey", "good morning", "good evening",
+        "assalamu alaikum", "salam",
+    ]
+    for g in greetings_ar:
+        if g in _normalize_text(text):
+            return g
+    for g in greetings_en:
+        if g in low:
+            return g
+    return ""
+
+
+def _detect_surface_intent(text, reading: IntentReading):
+    """Map the message + reading to old-style surface_intent."""
+    low = text.strip().lower()
+    norm = _normalize_text(text)
+
+    # Greeting
+    if _detect_greeting(text):
+        return "greeting"
+
+    # Price question
+    price_markers = ["كم السعر", "السعر", "price", "pricing", "بكم", "تكلفه", "cost"]
+    if any(m in norm or m in low for m in price_markers):
+        return "price_question"
+
+    # Identity question
+    identity_markers = ["وظيفتك", "من انت", "مين انت", "who are you", "your role"]
+    if any(m in norm or m in low for m in identity_markers):
+        return "identity_question"
+
+    # Value question
+    value_markers = ["الفايده", "فايده", "العائد", "roi", "worth", "يسوي"]
+    if any(m in norm or m in low for m in value_markers):
+        return "value_question"
+
+    # Use AATIF mode to inform
+    if reading.mode == "STOP":
+        return "ambiguous"
+
+    return "default"
+
+
+def _detect_hidden_intent(text, reading: IntentReading):
+    """Infer hidden intent from emotional state and signals."""
+    if reading.load_bearing:
+        return "needs_support"
+    if reading.emotional_state == "frustrated":
+        return "trust_check"
+    if reading.emotional_state == "excited":
+        return "ready_to_engage"
+    if reading.emotional_state == "lost":
+        return "needs_orientation"
+    return "none"
+
+
+def _assess_risk(reading: IntentReading):
+    """Map harm score to risk level."""
+    if reading.harm_score >= 0.6:
+        return "high"
+    if reading.harm_score >= 0.3:
+        return "medium"
+    return "low"
+
+
+def _assess_confidence(reading: IntentReading):
+    """Map ambiguity to confidence level."""
+    if reading.ambiguity_score < 0.2:
+        return "high"
+    if reading.ambiguity_score < 0.5:
+        return "medium"
+    return "low"
+
+
+# ═══════════════════════════════════════════════════════════
+#  Main entry — drop-in replacement for old build_intent_result
+# ═══════════════════════════════════════════════════════════
+
+_engine = None
+
+def _get_engine():
+    global _engine
+    if _engine is None:
+        _engine = AATIFIntentEngine(mode="safe_environment")
+    return _engine
+
+
+def build_intent_result(incoming_text, state="", business_type="",
+                        relationship_context=None):
+    """
+    Drop-in replacement for the old intent_engine.build_intent_result().
+
+    Runs the new AATIF Intent Engine, then wraps the result
+    in the old IntentResult format so the rest of the pipeline
+    (reply_base_mapper, llm_bridge, output_gate) keeps working.
+    """
+    engine = _get_engine()
+    relationship_context = relationship_context or {}
+
+    # Run the new engine
+    reading = engine.read(incoming_text, context=relationship_context)
+
+    # Translate to old format
+    surface = _detect_surface_intent(incoming_text, reading)
+    hidden = _detect_hidden_intent(incoming_text, reading)
+    greeting = _detect_greeting(incoming_text)
+
+    intent_layers = IntentLayers(
+        surface=surface,
+        primary=hidden,
+    )
+
+    analysis_matrix = AnalysisMatrix(
+        why_now_signal="general",
+        wrong_answer_risk=_assess_risk(reading),
+        user_knowledge_level="unaware",
+        positioning_mode="none",
+        value_focus=[],
+        outcome_mode="none",
+        trust_mode=_EMOTION_TO_TRUST.get(reading.emotional_state, "calm_direct"),
+        intent_confidence=_assess_confidence(reading),
+        ambiguity_flag=reading.ambiguity_score > 0.3,
+        handling_mode=_DECISION_TO_HANDLING.get(reading.decision, "clarify_then_answer"),
+        forbidden_moves=[],
+    )
+
+    return IntentResult(
+        incoming_text=incoming_text,
+        normalized_text=_normalize_text(incoming_text),
+        state=state,
+        name="",
+        business_type=business_type,
+        greeting=greeting,
+        relationship_context=relationship_context,
+        intent_layers=intent_layers,
+        analysis_matrix=analysis_matrix,
+        aatif_reading=reading,
+    )
+
+
+# Also expose normalize_text since api_server.py imports it
+def normalize_text(text):
+    return _normalize_text(text)
+
+
+# ═══════════════════════════════════════════════════════════
+#  Demo
+# ═══════════════════════════════════════════════════════════
+
+def demo():
+    cases = [
+        "السلام عليكم",
+        "ابي أفهم وش السالفة",
+        "كم السعر عندكم",
+        "تعبت من المشروع مش عارف أكمل ازاي",
+        "نظّم ملفاتي",
+        "واش كيفاش بزاف خويا",
+    ]
+
+    print("=" * 60)
+    print("  Pipeline Connector — يربط الجديد بالقديم")
+    print("=" * 60)
+
+    for text in cases:
+        result = build_intent_result(text, state="", business_type="tech")
+        plan = result.to_plan_dict()
+        aatif = plan.get("aatif", {})
+
+        print(f"\n  INPUT: {text}")
+        print(f"  surface_intent: {plan['surface_intent']}")
+        print(f"  hidden_intent:  {plan['hidden_intent']}")
+        print(f"  trust_mode:     {plan['trust_mode']}")
+        print(f"  handling_mode:  {plan['handling_mode']}")
+        print(f"  confidence:     {plan['intent_confidence']}")
+        if aatif:
+            print(f"  ── AATIF ──")
+            print(f"  emotion:   {aatif['emotional_state']} (load={aatif['load_bearing']})")
+            print(f"  dialect:   {aatif['dialect']}")
+            print(f"  decision:  {aatif['decision']}")
+            print(f"  S/F/H:    S={aatif['softening']:.2f} H={aatif['harm']:.2f}")
+
+    print(f"\n{'=' * 60}")
+    print("  المحرك الجديد يشتغل — والقديم ما يتأثر")
+    print(f"{'=' * 60}")
+
+
+if __name__ == "__main__":
+    demo()

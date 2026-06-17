@@ -1,0 +1,77 @@
+# Environment & secrets
+.env
+.env.*
+*.env
+ngrok.yml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Logs & temp
+*.log
+*.bak
+*.bak.*
+conversation_log.csv
+
+# Snapshots & archives
+snapshots/
+90_snapshots/
+
+# Command scripts (macOS .command launchers)
+*.command
+
+# Internal / personal
+email_draft_juzek.md
+DAILY_PRIORITIES.md
+BUILD_QUEUE.md
+ONBOARDING.md
+Instructions_Apply_To_All_Cowork.md
+LEAN_AGENT_PROMPTS.md
+DISPATCH_PROTOCOL.md
+CODEX_TASKS/
+.auto-memory/
+.nazzaf_write_test
+_archive/
+archive/
+
+# Ollama / model logs
+ollama_pull_log.txt
+
+# Symlinked repos (broken in clone)
+00_governance/
+01_canonical/
+10_runtime/
+20_channels/
+
+# Eval HTML viewers (large, not needed for academic review)
+*.skill
+*-eval.html
+*-eval-viewer.html
+
+# Validation scripts (ad-hoc, not part of core)
+run_*.py
+run_*.command
+*_results.txt
+*_results.md
+
+# Developer handoff (internal)
+AATIF_Developer_Handoff.docx
+ZENODO_UPLOAD_GUIDE.md
