@@ -6,6 +6,7 @@
 
 [![Tests](https://github.com/Abdelmgied-Khenkar/AATIF/actions/workflows/tests.yml/badge.svg)](https://github.com/Abdelmgied-Khenkar/AATIF/actions/workflows/tests.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20673292.svg)](https://doi.org/10.5281/zenodo.20673292)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 ---
 
@@ -15,7 +16,7 @@ AATIF is a computational governance framework that shapes large language model b
 
 The framework implements a continuous safety function *S* that fuses three independent perception channels — harm proximity, intent classification, and emotional load — into a single governance decision. Rather than binary allow/block, the system produces graded responses (EXECUTE → CLARIFY → SAFE_STOP → SAFE_FREEZE) with hysteresis to prevent oscillation at decision boundaries.
 
-AATIF emerged from 78 field notes documenting a 10-week human–AI co-construction process. The theoretical foundation — the **الذكازمكان** (*Intelligence-Spacetime*) hypothesis — proposes that governance layers act as structural mass within the LLM's probability space, producing continuous curvature in output trajectories toward ethical behavior, analogous to how mass curves spacetime in general relativity.
+AATIF emerged from a year of iterative human–AI development — theoretical foundations, governance laws, and protocol design — with the computational engine built and validated across a 10-week intensive phase documented in 78 field notes. The theoretical foundation — the **الذكازمكان** (*Intelligence-Spacetime*) hypothesis — proposes that governance layers act as structural mass within the LLM's probability space, producing continuous curvature in output trajectories toward ethical behavior, analogous to how mass curves spacetime in general relativity.
 
 **Paper:** [AATIF — An Arabic-First Governance Framework for LLM Behavior](https://doi.org/10.5281/zenodo.20673292) (Zenodo, 2026)
 
@@ -83,7 +84,7 @@ The safety gate (Law Ω) is mode-independent by design.
 ```
 AATIF/
 ├── README.md
-├── LICENSE                          # MIT License
+├── LICENSE                          # Apache License 2.0
 ├── requirements.txt                 # Python dependencies
 │
 ├── engine/                          # Core governance engine
@@ -129,7 +130,7 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 
 # Run evaluation harness
-python -m pytest eval/ -v
+python eval/eval_runner.py --verbose
 ```
 
 The test suite covers:
@@ -195,11 +196,19 @@ AATIF is the mass. The S equation is how that mass produces measurable curvature
 
 ---
 
+## License
+
+This project is licensed under the **Apache License 2.0** — see the [LICENSE](LICENSE) file for details.
+
+AATIF is freely available for academic research, education, and non-commercial use. Commercial use requires a separate agreement with the author. Contact: abdulmjeed.ibrahem@gmail.com
+
+---
+
 ## Author
 
 **Abdelmgied Ibrahim Khenkar** (عبدالمجيد إبراهيم خنكار)
 
-Co-built with Claude (Anthropic).
+Co-built with Claude (Anthropic) and GPT (OpenAI).
 
 ---
 
