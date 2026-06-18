@@ -32,6 +32,6 @@ jobs:
           PYTHONPATH: engine
 
       - name: Run evaluation harness
-        run: python -m pytest eval/ -v
+        run: python eval/eval_runner.py --verbose
         env:
           PYTHONPATH: engine

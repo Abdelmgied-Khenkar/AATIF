@@ -36,10 +36,11 @@ import json
 import os
 import sys
 
-# ── Make the AATIF root importable when run as a module or a script ──
+# ── Make the AATIF engine importable when run as a module or a script ──
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+ENGINE = os.path.join(ROOT, "engine")
+if ENGINE not in sys.path:
+    sys.path.insert(0, ENGINE)
 
 from aatif_intent_engine import read_intent  # noqa: E402
 

@@ -40,10 +40,11 @@ import os
 import sys
 import unittest
 
-# Make the AATIF root importable regardless of where the test is run from.
+# Make the AATIF engine importable regardless of where the test is run from.
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+ENGINE = os.path.join(ROOT, "engine")
+if ENGINE not in sys.path:
+    sys.path.insert(0, ENGINE)
 
 from aatif_intent_engine import AATIFIntentEngine
 
