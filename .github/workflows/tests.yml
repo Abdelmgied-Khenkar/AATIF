@@ -28,6 +28,10 @@ jobs:
 
       - name: Run tests
         run: python -m pytest tests/ -v
+        env:
+          PYTHONPATH: engine
 
       - name: Run evaluation harness
         run: python -m pytest eval/ -v
+        env:
+          PYTHONPATH: engine
