@@ -4,6 +4,7 @@
 
 > *Architected Adaptive Thoughts & Intelligence Frameworks*
 
+[![Tests](https://github.com/Abdelmgied-Khenkar/AATIF/actions/workflows/tests.yml/badge.svg)](https://github.com/Abdelmgied-Khenkar/AATIF/actions/workflows/tests.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20673292.svg)](https://doi.org/10.5281/zenodo.20673292)
 
 ---
