@@ -75,3 +75,4 @@ run_*.command
 # Developer handoff (internal)
 AATIF_Developer_Handoff.docx
 ZENODO_UPLOAD_GUIDE.md
+push_aatif.command
