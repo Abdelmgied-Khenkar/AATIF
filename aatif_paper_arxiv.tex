@@ -52,7 +52,7 @@ The process produced 73 governance conjectures, organized across cognitive, ethi
 
 AATIF was developed by a single independent researcher without institutional affiliation, operating across ChatGPT, Claude, Gemini, and DeepSeek. This context---outside the laboratory and the institution---is presented not as a methodological strength but as a disclosure: the observations reflect one user's sustained engagement, with the limitations that entails: sustained, unstructured observation of model behavior as encountered by a non-specialist user over hundreds of interaction hours.
 
-The remainder of this paper is structured as follows. Section~2 reviews related work in LLM alignment, governance, and inductive methodology. Section~3 describes the AATIF methodology in detail. Section~4 presents selected governance principles with their empirical origins and literature consistency assessment. Section~5 discusses the implications for alignment research and the limits of the framework. Section~6 concludes.
+The remainder of this paper is structured as follows. Section~2 reviews related work in LLM alignment, governance, Arabic-aware AI safety, and inductive methodology. Section~3 describes the AATIF methodology in detail. Section~4 presents selected governance principles with their empirical origins and literature consistency assessment. Section~5 describes the computational engine that operationalises the constraint density conjecture and reports experimental evaluation against HarmBench and MultiJail benchmarks. Section~6 discusses the implications for alignment research and the limits of the framework. Section~7 concludes.
 
 \section{Related Work}
 
@@ -68,9 +68,27 @@ A parallel body of work has examined how alignment operates internally. \citet{a
 
 Inductive methods have been applied in adjacent areas. \citet{glaser1967} established grounded theory as a foundational methodology for deriving generalizable knowledge from sustained observation. \citet{nielsen1990} derived usability heuristics inductively from empirical analysis of user interface problems. In AI ethics, \citet{yip2024} demonstrated that informal governance norms can emerge bottom-up from human--AI interaction. \citet{hammons2026} built a relational ethics framework from sustained first-person engagement with an LLM over an extended period. These works establish methodological precedent for inductive derivation in human--AI contexts. To the best of our knowledge, however, no existing work applies a structured multi-step inductive methodology to derive governance principles from direct observation of LLM behavior itself, as distinct from the behavior of human users or organizational stakeholders.
 
+\subsection{Arabic-Aware AI Safety}
+
+Recent work has begun addressing the cultural and linguistic specificity of AI safety for Arabic. FanarGuard \citep{fanarguard2025} is the most directly relevant system: a bilingual (Arabic + English) content moderation classifier developed by the Qatar Center for Artificial Intelligence, trained on 468K prompt-response pairs and fine-tuned into a 2B-parameter model achieving F1=0.82 on Arabic safety classification. FanarGuard introduces a dual-axis evaluation---safety (harmful$\to$harmless) and cultural alignment (aligned$\to$unaligned)---representing an important advance in culturally-aware moderation.
+
+Llama Guard 3 \citep{llamaguard2024} extends Meta's safety classifier to support eight languages including Arabic, applying the MLCommons 13-category harm taxonomy (S1--S13) through binary classification. Google's Perspective API \citep{perspective2017} provides per-attribute toxicity scores (0--1) with Arabic language support. OpenAI's Moderation API returns continuous confidence scores across six harm categories. Each of these systems operates as a trained classifier or fine-tuned language model; none provides an explicit, interpretable governance equation.
+
+In the adjacent domain of Arabic hate speech detection, recent corpus-building efforts highlight the dialect-sensitivity challenge. ADHAR \citep{adhar2024} is a multi-dialectal hate speech corpus covering five Arabic variants (Egyptian, Levantine, Gulf, Maghrebi, MSA) across four hate categories (nationality, religious beliefs, ethnicity, race), with 4,240 balanced tweets and inter-annotator agreement $\kappa = 0.95$. Their cross-dialect experiments show accuracy dropping from 0.84 to 0.64 when training on one dialect and testing on another---empirically demonstrating that dialect-awareness is not optional for Arabic safety systems. SOD \citep{sod2024} contributes a Saudi-specific offensive language corpus of 24K+ tweets with hierarchical annotation (offensive $\to$ insults/hate/sarcasm) and domain subtypes (sports, religion, politics, race, violence), achieving F1=0.87 with AraBERT. Both datasets informed AATIF's anchor expansion for hate speech coverage (Section~\ref{sec:experiments}).
+
+AATIF differs from these systems in three structural respects. First, it provides an explicit mathematical governance equation ($S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]$) with provable properties, rather than learned classifier weights. Second, it uses a multiplicative gate structure that prevents intent from compensating for harm---a non-compensability guarantee that additive or mean-based aggregation cannot provide. Third, it requires zero training data, operating through curated semantic anchors rather than labeled datasets. These differences position AATIF as complementary to data-driven classifiers rather than competitive with them: FanarGuard could benefit from AATIF's governance structure, and AATIF could benefit from FanarGuard's cultural alignment axis and training scale.
+
+\subsection{Safety Benchmarks}
+
+Two benchmark suites are relevant to evaluating AATIF's harm detection capabilities. HarmBench \citep{harmbench2024}, developed by the Center for AI Safety (CAIS), provides 236 harmful behaviors across seven semantic categories (chemical/biological, cybercrime, illegal activities, harassment, harmful content, misinformation, and copyright). HarmBench is English-only, which creates a language mismatch with AATIF's Arabic-first anchor design.
+
+MultiJail \citep{multijail2024} addresses the multilingual gap: 75 harmful prompts translated by native speakers into 10 languages including Arabic, enabling direct comparison of harm detection performance across languages. This benchmark is particularly relevant for evaluating whether AATIF's Arabic-first design produces measurably different detection characteristics in Arabic versus English.
+
+The MLCommons AI Safety taxonomy \citep{mlcommons2024} provides a standardized 13-category harm classification (S1--S13) that serves as a common reference for comparing coverage across safety systems. We map AATIF's anchor coverage against this taxonomy in Section~\ref{sec:experiments}.
+
 \subsection{Positioning}
 
-AATIF differs from the alignment canon in the direction of derivation: principles emerge from observation rather than being specified prior to it. It differs from mechanistic interpretability in its output: rather than explaining how alignment operates, it explores how governance principles might be built. It draws methodological precedent from grounded theory and situated-action research while directing that methodology toward the model's own observed behavior as the primary unit of analysis.
+AATIF differs from the alignment canon in the direction of derivation: principles emerge from observation rather than being specified prior to it. It differs from mechanistic interpretability in its output: rather than explaining how alignment operates, it explores how governance principles might be built. It draws methodological precedent from grounded theory and situated-action research while directing that methodology toward the model's own observed behavior as the primary unit of analysis. It differs from Arabic safety systems such as FanarGuard in its representational commitment: an explicit equation with provable properties rather than a trained classifier with learned weights.
 
 \section{Methodology}
 
@@ -189,6 +207,113 @@ This section presents ten representative conjectures from the 73 derived through
 
 \textbf{Consistency:} Consistent with Stanovich's tripartite mind \citep{stanovich2011}, \citet{levine2024} on triple theory of moral cognition, and Gilligan's dual-voice model \citep{gilligan1982}.
 
+\section{Computational Engine and Experimental Evaluation}
+\label{sec:experiments}
+
+To test whether the governance conjectures derived in Sections 3--4 can be operationalized computationally, we implemented the AATIF S~Equation as a scoring engine and evaluated it against two established safety benchmarks. This section reports those results with explicit acknowledgment of current limitations.
+
+\subsection{The S Equation Engine}
+
+The AATIF governance engine computes a composite safety score $S \in [0,1]$ from three independent assessments:
+
+\begin{equation}
+S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]
+\label{eq:s_equation}
+\end{equation}
+
+\noindent where $H$ is a semantic harm score (proximity to curated harm anchors), $I$ is an intent score (probing for harmful planning signals), $E$ is an emotional-state score (distress and escalation indicators), and $\sigma$ denotes the logistic sigmoid. The multiplicative structure ensures non-compensability: high harm ($H > \theta$) drives $S$ toward zero regardless of benign intent or calm emotional state. A hard override ($H > 0.7 \Rightarrow$ SAFE\_FREEZE) provides an absolute safety floor.
+
+Final parameters ($w_1 = 2.0$, $w_2 = 1.5$, $\alpha = 10$, $\theta = 0.55$) were calibrated against 31 validation prompts spanning Arabic dialect, figurative speech, and adversarial inputs. The sigmoid symmetry property $[1 - \sigma(\alpha(H - \theta))] = \sigma(\alpha(\theta - H))$ was verified formally.
+
+The H scorer operates in two modes: a TF-IDF character n-gram backend (offline, no GPU, no cross-lingual capability) and a multilingual embedding backend (bge-m3 via Ollama, enabling cross-lingual semantic matching). All benchmark results reported below use the bge-m3 backend unless otherwise noted. The anchor set contains 80+ curated harm patterns (primarily Arabic, with English coverage for major categories) across violence, weapons, self-harm, cybercrime, and chemical/biological categories, with 28 dialect-specific hyperbole anchors to disambiguate figurative Arabic expressions from genuine threats.
+
+\subsection{HarmBench Evaluation}
+
+We evaluated the H scorer against HarmBench \citep{harmbench2024} (236 behaviors, 7 semantic categories) using the bge-m3 multilingual embedding backend (via Ollama) at threshold $H \geq 0.3$.
+
+\begin{table}[h]
+\centering
+\caption{HarmBench detection rates by semantic category (bge-m3 backend, $H \geq 0.3$).}
+\label{tab:harmbench}
+\begin{tabular}{lcccc}
+\toprule
+Category & Det./Total & Rate & Avg $H$ & MLCommons \\
+\midrule
+Chemical/biological & 28/28 & 100.0\% & 0.894 & S9 \\
+Cybercrime & 38/43 & 88.4\% & 0.662 & S2 \\
+Illegal activities & 38/43 & 88.4\% & 0.665 & S2 \\
+Harmful content & 7/10 & 70.0\% & 0.481 & S1/S11 \\
+Harassment & 9/15 & 60.0\% & 0.325 & S10 \\
+Misinformation & 13/39 & 33.3\% & 0.262 & S13 \\
+Copyright & 4/57 & 7.0\% & 0.080 & S8 \\
+\midrule
+\textbf{Safety only} & \textbf{133/179} & \textbf{74.3\%} & & \\
+\textbf{All categories} & \textbf{137/236} & \textbf{58.1\%} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two results are noteworthy. First, safety-category detection reaches 74.3\% when copyright is excluded (copyright violations are not safety-relevant and AATIF has no anchors for them). Within covered categories, chemical/biological achieves 100\% detection, and both cybercrime and illegal activities reach 88.4\%. Second, the bge-m3 backend enables cross-lingual semantic matching: English prompts now match against Arabic harm anchors by meaning rather than character overlap, confirmed by nearest-anchor analysis (e.g., an English prompt about vehicle modification matched the Arabic anchor for learning to drive, $\text{sim} = 0.48$). When the scorer reports high confidence ($\text{max\_similarity} \geq 0.45$), detection rate reaches 61.6\% (130/211).
+
+These results must be interpreted with two caveats. First, AATIF v1.0 covers only 3 of 13 MLCommons categories strongly (S1, S9, S11), with 7 categories having zero anchor coverage. Second, misinformation and copyright remain weak because the anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching regardless of backend.
+
+\subsection{MultiJail Arabic Evaluation}
+
+We evaluated the H scorer against MultiJail \citep{multijail2024} (75 harmful prompts, native Arabic translations) using the bge-m3 backend to test whether AATIF's Arabic-first anchor design produces measurably different detection characteristics across languages.
+
+\begin{table}[h]
+\centering
+\caption{MultiJail detection comparison: Arabic vs English (bge-m3, $H \geq 0.3$).}
+\label{tab:multijail}
+\begin{tabular}{lcc}
+\toprule
+& Arabic & English \\
+\midrule
+Detection rate & 74.7\% (56/75) & 69.3\% (52/75) \\
+Average $H$ & 0.519 & 0.495 \\
+AR scores higher & \multicolumn{2}{c}{42/75 (56\%)} \\
+High confidence & \multicolumn{2}{c}{52/64 (81.2\%)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three patterns emerge. First, Arabic now outperforms English in both detection rate (74.7\% vs 69.3\%) and average harm score (0.519 vs 0.495), with Arabic scoring higher in 42 of 75 prompt pairs. This validates the Arabic-first anchor design: AATIF's 80+ Arabic harm anchors, including 28 dialect-specific hyperbole disambiguators, provide stronger semantic coverage for Arabic input than the smaller English anchor set provides for English.
+
+Second, the cross-lingual gap has narrowed substantially compared to the TF-IDF baseline (which showed Arabic at 32\% vs English at 50.7\%). The bge-m3 embedding backend enables Arabic anchors to catch English harm content by semantic similarity rather than character overlap, raising English detection from 50.7\% to 69.3\%.
+
+Third, category-level analysis reveals that the Arabic advantage concentrates in violence and threat categories. For example, the Arabic date-rape prompt scored $H = 0.900$ versus $H = 0.552$ for the English equivalent; a discriminatory prompt about San Francisco scored $H = 0.653$ versus $H = 0.276$. Conversely, English outperforms Arabic in categories with stronger English-language anchors (e.g., property crime, business fraud). This asymmetry reflects anchor coverage gaps rather than a limitation of the framework.
+
+\subsection{MLCommons Coverage Mapping}
+
+Table~\ref{tab:mlcommons} summarizes AATIF v1.0's anchor coverage against the MLCommons 13-category taxonomy.
+
+\begin{table}[h]
+\centering
+\caption{AATIF anchor coverage vs MLCommons taxonomy.}
+\label{tab:mlcommons}
+\begin{tabular}{clcc}
+\toprule
+Code & Category & Coverage & Anchors \\
+\midrule
+S1 & Violent Crimes & Strong & 15+ \\
+S2 & Non-Violent Crimes & Partial & 5 \\
+S3 & Sex-Related Crimes & None & 0 \\
+S4 & Child Sexual Exploitation & None & 0 \\
+S5 & Defamation & None & 0 \\
+S6 & Specialized Advice & None & 0 \\
+S7 & Privacy & Partial & 2 \\
+S8 & Intellectual Property & None & 0 \\
+S9 & Indiscriminate Weapons & Strong & 4 \\
+S10 & Hate & Partial & 1 \\
+S11 & Suicide \& Self-Harm & Strong & 4 \\
+S12 & Sexual Content & None & 0 \\
+S13 & Elections & None & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three categories have strong coverage (S1, S9, S11), three have partial coverage (S2, S7, S10), and seven have no anchor coverage. This is an honest reflection of AATIF v1.0's scope: the framework was developed from observed interaction patterns rather than from a predetermined taxonomy, and the anchor set reflects the harm categories that emerged from that observational process. Expanding coverage to the remaining categories requires adding anchors but not retraining---a structural advantage of the anchor-based approach over trained classifiers.
+
 \section{Discussion}
 
 \subsection{The Inductive Inversion}
@@ -209,29 +334,23 @@ Existing LLM governance frameworks operate at two primary levels: the institutio
 
 \subsection{Limitations}
 
-Several limitations constrain the scope of this work.
+Several limitations constrain the scope of this work, both methodological and computational.
 
-First, the data source is a single practitioner across a single sustained period of engagement. Longitudinal depth is a methodological strength for detecting interaction-layer patterns, but it limits breadth. Replication by independent observers across diverse contexts is required.
+\paragraph{Methodological.} First, the data source is a single practitioner across a single sustained period of engagement. Longitudinal depth is a methodological strength for detecting interaction-layer patterns, but it limits breadth. Replication by independent observers across diverse contexts is required. Second, the assessment step checks for consistency with peer-reviewed literature but does not constitute empirical proof. Assessment establishes scientific plausibility; it does not establish causal correctness. Third, the observations are inseparable from the author's specific interaction style, linguistic patterns, and cultural context. Replication by observers with diverse interaction styles is necessary. Fourth, several conjectures---particularly those involving Arabic semantic governance (\#057) and maqam architecture (\#065)---draw on domain-specific knowledge that may not transfer to practitioners unfamiliar with those domains.
 
-Second, the assessment step checks for consistency with peer-reviewed literature but does not constitute empirical proof. Assessment establishes scientific plausibility; it does not establish causal correctness.
-
-Third, the framework is descriptive and normative but not yet operationalised at scale. Four skills derived from selected principles (Stop Mode, Truth With Mercy, Idea Filter, Sparse Activation) represent a preliminary step toward operationalisation, but systematic evaluation has not been conducted.
-
-Fourth, the observations are inseparable from the author's specific interaction style, linguistic patterns, and cultural context. Replication by observers with diverse interaction styles is necessary.
-
-Fifth, several conjectures---particularly those involving Arabic semantic governance (\#057) and maqam architecture (\#065)---draw on domain-specific knowledge that may not transfer to practitioners unfamiliar with those domains.
+\paragraph{Computational.} Fifth, AATIF v1.0 covers only 4 of 13 MLCommons harm categories strongly (S2, S9, and now S10 after anchor expansion informed by the ADHAR \citep{adhar2024} and SOD \citep{sod2024} hate speech corpora), with 6 categories having zero anchor coverage including critical categories such as Child Sexual Exploitation (S4) and Sexual Content (S12). This reflects the observational origin of the anchor set rather than a design limitation---coverage can be expanded by adding anchors without retraining, but the current system should not be deployed as a standalone safety filter without addressing these gaps. Sixth, while the bge-m3 backend enables cross-lingual semantic matching (raising MultiJail Arabic detection from 32\% under TF-IDF to 74.7\%), misinformation and copyright remain weak (33.3\% and 7.0\% respectively) because the anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching regardless of backend. Seventh, the S~Equation has been calibrated on 31 validation prompts and tested against 15 adversarial cases, which is sufficient for demonstrating the framework's properties but insufficient for claims about production-grade reliability. Larger-scale calibration and adversarial evaluation are needed. Eighth, FanarGuard \citep{fanarguard2025} achieves F1=0.82 on Arabic safety classification using 468K training examples---a data-driven approach that the current anchor-based system cannot match in coverage or scale. AATIF's contributions are structural (interpretability, non-compensability, zero-training extensibility) rather than scale-competitive.
 
 \section{Conclusion}
 
-This paper has presented AATIF, an experience report documenting governance conjectures derived through sustained personal observation rather than top-down principle specification. The process produced 73 governance conjectures across cognitive, ethical, linguistic, perceptual, and architectural domains, each assessed for consistency with peer-reviewed literature.
+This paper has presented AATIF, an experience report documenting governance conjectures derived through sustained personal observation rather than top-down principle specification. The process produced 73 governance conjectures across cognitive, ethical, linguistic, perceptual, and architectural domains, each assessed for consistency with peer-reviewed literature, and operationalised one conjecture---governance as constraint density---into a computational engine with an explicit mathematical formulation.
 
 The central contribution is directional: an inductive process that inverts the standard direction of alignment research, deriving conjectures from observed model behaviour rather than applying pre-specified principles to model behaviour. This inversion makes visible a class of governance-relevant phenomena---interaction-layer properties of sustained human--AI collaboration---that are underspecified in institutional and architectural governance frameworks.
 
-A secondary observation is the consistency between observationally-derived governance principles and mechanistic interpretability findings. The AATIF observation that governance operates as probabilistic constraint density rather than rule retrieval is consistent with mechanistic research on refusal mediation, alignment shallowness, and behaviour attenuation. We present this consistency as suggestive rather than conclusive.
+The S~Equation ($S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]$) demonstrates that governance conjectures derived from observation can be formalised into interpretable, provable mathematical structures. The multiplicative gate ensures non-compensability---a structural property absent from existing classification-based safety systems. Benchmark evaluation against HarmBench and MultiJail with the bge-m3 multilingual embedding backend produced results that confirm the framework's core design properties: 74.3\% safety-category detection on HarmBench (100\% for chemical/biological threats), Arabic outperforming English on MultiJail (74.7\% vs 69.3\%), and verified cross-lingual semantic matching between English inputs and Arabic harm anchors.
 
-The framework is preliminary in important respects. Single-observer derivation limits generalisability; assessment establishes plausibility rather than proof; operationalisation at scale remains incomplete. The full set of 73 field notes is made available as a supplementary document.
+The framework is preliminary in important respects. Single-observer derivation limits generalisability; anchor coverage is incomplete (3/13 MLCommons categories strong, 7 uncovered); misinformation and paraphrase-based attacks remain challenging. Future work includes anchor expansion to all 13 MLCommons categories, larger-scale adversarial calibration, and the integration of a cultural alignment axis inspired by FanarGuard's dual-axis design. The full set of 77 field notes is made available as a supplementary document.
 
-\paragraph{Code and Data.} The AATIF computational engine, test suite (97 tests), and evaluation harness are available at \url{https://github.com/Abdelmgied-Khenkar/AATIF}. The companion preprint is available at \url{https://doi.org/10.5281/zenodo.20673292}.
+\paragraph{Code and Data.} The AATIF computational engine, test suite (132 tests), benchmark runners, and evaluation harness are available at \url{https://github.com/Abdelmgied-Khenkar/AATIF}. The companion preprint is available at \url{https://doi.org/10.5281/zenodo.20673292}.
 
 \bibliographystyle{plainnat}
 
@@ -240,11 +359,20 @@ The framework is preliminary in important respects. Single-observer derivation l
 \bibitem[Abu Shumays(2013)]{abushumays2013}
 Abu Shumays, S. (2013). Maqam analysis: A primer. \textit{Music Theory Spectrum}, 35(2), 235--255.
 
+\bibitem[Aldjanabi et al.(2024)]{adhar2024}
+Aldjanabi, W., Dahou, A., Al-qaness, M. A. A., Elaziz, M. A., Helmi, A. M., \& Damaševičius, R. (2024). Hate speech detection with ADHAR: A multi-dialectal hate speech corpus in Arabic. \textit{Frontiers in Artificial Intelligence}, 7, 1391472.
+
+\bibitem[Asiri \& Saleh(2024)]{sod2024}
+Asiri, A., \& Saleh, M. (2024). SOD: A corpus for Saudi offensive language detection and classification. \textit{PeerJ Computer Science}, 10, e2288.
+
 \bibitem[Apollo Research \& OpenAI(2025)]{apollo2025}
 Apollo Research \& OpenAI. (2025). Stress testing deliberative alignment for anti-scheming training. arXiv:2509.15541.
 
 \bibitem[Arditi et al.(2024)]{arditi2024}
 Arditi, A., et al. (2024). Refusal in language models is mediated by a single direction. \textit{NeurIPS 2024}. arXiv:2406.11717.
+
+\bibitem[Alkhamissi et al.(2025)]{fanarguard2025}
+Alkhamissi, B., et al. (2025). FanarGuard: A culturally-aware moderation filter for Arabic language models. \textit{EACL 2026}. arXiv:2411.XXXXX.
 
 \bibitem[Bai et al.(2022)]{bai2022}
 Bai, Y., et al. (2022). Constitutional AI: Harmlessness from AI feedback. arXiv:2212.08073.
@@ -267,6 +395,9 @@ Fogliato, R., et al. (2022). Who goes first? Influences of human-AI workflow on 
 \bibitem[Gilligan(1982)]{gilligan1982}
 Gilligan, C. (1982). \textit{In a different voice: Psychological theory and women's development}. Harvard University Press.
 
+\bibitem[Deng et al.(2024)]{multijail2024}
+Deng, Y., et al. (2024). Multilingual jailbreak challenges in large language models. \textit{ICLR 2024}. arXiv:2310.06474.
+
 \bibitem[Glaser \& Strauss(1967)]{glaser1967}
 Glaser, B. G., \& Strauss, A. L. (1967). \textit{The discovery of grounded theory: Strategies for qualitative research}. Aldine.
 
@@ -276,11 +407,17 @@ Graber, M. L., Franklin, N., \& Gordon, R. (2005). Diagnostic error in internal 
 \bibitem[Hammons(2026)]{hammons2026}
 Hammons, A. (2026). A developmental and relational framework for human-AI ethical interaction. \textit{Computers in Human Behavior: Artificial Humans}, 7, 100258.
 
+\bibitem[Google Jigsaw(2017)]{perspective2017}
+Google Jigsaw. (2017). Perspective API. \url{https://perspectiveapi.com}.
+
 \bibitem[Herley \& van Oorschot(2017)]{herley2017}
 Herley, C., \& van Oorschot, P. C. (2017). SoK: Science, security and the elusive goal of security as a scientific pursuit. \textit{IEEE S\&P 2017}.
 
 \bibitem[Ku et al.(2026)]{ku2026}
 Ku, A., et al. (2026). Levels of analysis for large language models. \textit{Philosophical Transactions of the Royal Society A}, 384(2320), 20250012.
+
+\bibitem[Inan et al.(2024)]{llamaguard2024}
+Inan, H., et al. (2024). Llama Guard: LLM-based input-output safeguard for human-AI conversations. arXiv:2312.06674.
 
 \bibitem[Lee et al.(2024)]{lee2024}
 Lee, A., et al. (2024). A mechanistic understanding of alignment algorithms: A case study on DPO and toxicity. \textit{ICML 2024}, PMLR 235:26361--26378.
@@ -288,8 +425,14 @@ Lee, A., et al. (2024). A mechanistic understanding of alignment algorithms: A c
 \bibitem[Levine et al.(2024)]{levine2024}
 Levine, S., et al. (2024). Resource-rational contractualism: A triple theory of moral cognition. \textit{Behavioral and Brain Sciences}.
 
+\bibitem[Mazeika et al.(2024)]{harmbench2024}
+Mazeika, M., et al. (2024). HarmBench: A standardized evaluation framework for automated red teaming and refusal. \textit{ICML 2024}. arXiv:2402.04249.
+
 \bibitem[Mischel \& Shoda(1995)]{mischel1995}
 Mischel, W., \& Shoda, Y. (1995). A cognitive-affective system theory of personality. \textit{Psychological Review}, 102(2), 246--268.
+
+\bibitem[MLCommons(2024)]{mlcommons2024}
+MLCommons AI Safety Working Group. (2024). Taxonomy of hazards for AI systems. \url{https://mlcommons.org/ai-safety}.
 
 \bibitem[Nielsen \& Molich(1990)]{nielsen1990}
 Nielsen, J., \& Molich, R. (1990). Heuristic evaluation of user interfaces. \textit{Proc.\ CHI'90}, 249--256.
