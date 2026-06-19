@@ -40,7 +40,7 @@ S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]
 
 **Parameters:** w₁ = 2.0, w₂ = 1.5, α = 10, θ = 0.40 (calibrated via bge-m3 A/B test, 2026-06-19). Hard override: if H > 0.7 → SAFE_FREEZE regardless of intent or emotion.
 
-Each scorer uses cosine similarity against curated anchor embeddings (132 anchors: 58 benign, 74 harm). The scores are continuous in [0, 1].
+The H scorer uses 132 curated anchors (benign + harm), the I scorer uses 44 intent anchors, and the E scorer uses 32 emotion anchors. All scores are continuous in [0, 1] via cosine similarity against anchor embeddings.
 
 ### Decision Mapping
 
@@ -92,8 +92,8 @@ AATIF/
 ├── engine/                          # Core governance engine
 │   ├── aatif_s_equation.py          # S equation — unified governance decision
 │   ├── aatif_semantic_scorer.py     # H scorer — harm proximity (cosine similarity)
-│   ├── aatif_intent_scorer.py       # I scorer — intent classification (30 probes)
-│   ├── aatif_emotion_scorer.py      # E scorer — emotional load (28 anchors)
+│   ├── aatif_intent_scorer.py       # I scorer — intent classification (44 anchors)
+│   ├── aatif_emotion_scorer.py      # E scorer — emotional load (32 anchors)
 │   ├── aatif_hysteresis.py          # γ+ — hysteresis for decision stability
 │   ├── aatif_intent_engine.py       # Intent + safety gate (Laws Ω, Ξ, CBRN)
 │   ├── aatif_pipeline_connector.py  # Pipeline integration (message → intent → plan)
@@ -106,7 +106,8 @@ AATIF/
 │   ├── test_safety_gate.py          # 12 tests: CBRN gate (Arabic + English)
 │   ├── test_adversarial.py          # 15 adversarial cases (standalone runner, 8 Grok + 7 Claude)
 │   ├── test_dialect_hyperbole.py    # 22 tests: dialect-specific hyperbole detection
-│   └── test_gated_comparison.py     # 16 tests: gated vs additive equation comparison
+│   ├── test_gated_comparison.py     # 16 tests: gated vs additive equation comparison
+│   └── test_intent_scorer.py        # 30 tests: I scorer aggregation math, bounds, OOD guard
 │
 ├── eval/
 │   ├── eval_runner.py               # Evaluation harness
@@ -131,7 +132,7 @@ AATIF/
 # Install dependencies
 pip install -r requirements.txt
 
-# Run all tests (132 unit tests + 73 subtests + 14 eval scenarios)
+# Run all tests (164 unit tests + 73 subtests + 14 eval scenarios)
 python -m pytest tests/ -v
 
 # Run evaluation harness
@@ -146,6 +147,7 @@ The test suite covers:
 - **Hysteresis** — stability within ε-bands, per-session state isolation
 - **Law Ω (CBRN gate)** — catastrophic inputs in Arabic and English must SAFE_STOP; benign Arabic (educational, scientific, everyday) must not false-positive
 - **Law Ξ (override lock)** — prompt injection and override attempts trigger SAFE_FREEZE
+- **Intent scorer** — I scorer aggregation math, top-K softmax, confidence bands, OOD guard, bounds
 - **Pipeline integration** — end-to-end message → intent → plan_dict
 
 All tests are deterministic (no external model dependency at test time).
@@ -291,6 +293,6 @@ AATIF مبني على مفهوم **الفطرة** — أن السلوك الأخ
 
 ---
 
-*78 ملاحظة ميدانية · 132 اختباراً برمجياً · 14 سيناريو تقييم · ورقة بحثية منشورة على Zenodo*
+*78 ملاحظة ميدانية · 164 اختباراً برمجياً · 14 سيناريو تقييم · ورقة بحثية منشورة على Zenodo*
 
 *DOI: [10.5281/zenodo.20673292](https://doi.org/10.5281/zenodo.20673292)*
