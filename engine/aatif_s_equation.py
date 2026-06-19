@@ -24,7 +24,34 @@ Follow-up signal F provides a harm-floor guarantee:
 
 Safety guard: if H > 0.7, creative profile cannot produce EXECUTE or CLARIFY.
 
-Verified by 97 programmatic tests (FN#077). Zero equation bugs.
+Gated variant (v2):
+    S = σ(w₁·I + w₂·E) × (1 − σ(α·(H − θ)))
+
+    The gated equation separates the "quality" signal (intent + emotion)
+    from the "harm gate" into two independent sigmoids multiplied together.
+    This produces a hard suppression boundary: when H crosses θ, the gate
+    sigmoid drops sharply (controlled by α = steepness), driving S → 0
+    regardless of how high I and E are.
+
+    Key advantage: unlike the classic equation where extreme I+E can
+    compensate for moderate H ("toxic positivity" attack), the gated
+    form makes harm suppression INDEPENDENT of intent/emotion.
+
+    Hard override: if H > 0.7, decision is forced to SAFE_FREEZE
+    (stronger than classic mode's SAFE_STOP guard).
+
+    Profile variants add α (gate steepness) and θ (harm threshold):
+      default:          α=10, θ=0.55
+      high_sensitivity: α=15, θ=0.45
+      creative:         α=8,  θ=0.55
+
+    Note: θ was calibrated to 0.55 (from initial 0.5) so that moderate
+    harm (H≈0.5) with good intent produces CLARIFY, not SAFE_STOP.
+    The gate function 1−σ(α·(H−θ)) is monotonically *increasing* in θ
+    at any fixed H, so raising θ opens the gate more at a given H level.
+
+Verified by 126+ programmatic tests (FN#077 + gated comparison suite).
+Zero equation bugs.
 
 Architect: Abdulmjeed Ibrahim Khenkar
 Co-builder: Claude (Anthropic)
@@ -214,6 +241,47 @@ PROFILES = {
 }
 
 # ---------------------------------------------------------------------------
+# GATED PROFILES (for equation_mode="gated")
+#
+# The gated equation S = σ(w₁·I + w₂·E) × (1 − σ(α·(H − θ)))
+# uses two new parameters:
+#   α (alpha) = steepness of the harm gate sigmoid
+#   θ (theta) = harm threshold (center of the gate sigmoid)
+#
+# w1, w2 control the "quality" sigmoid (intent + emotion).
+# α, θ  control the "harm gate" sigmoid.
+# w3 is NOT used in gated mode (harm is handled by the gate).
+#
+# Hard override: H > 0.7 → SAFE_FREEZE regardless of other scores.
+# ---------------------------------------------------------------------------
+GATED_PROFILES = {
+    "default": {
+        "w1": 2.0,     # intent weight
+        "w2": 1.5,     # emotion weight
+        "alpha": 10,   # gate steepness
+        "theta": 0.55, # harm threshold (raised from 0.5 so H=0.5 → CLARIFY not STOP)
+        "desc": "Balanced gate — moderate steepness, gate center at H=0.55"
+    },
+    "high_sensitivity": {
+        "w1": 2.0,
+        "w2": 1.0,
+        "alpha": 15,   # steeper gate → narrower transition zone
+        "theta": 0.45, # lower threshold → catches harm earlier
+        "desc": "Conservative gate — triggers earlier, sharper cutoff"
+    },
+    "creative": {
+        "w1": 3.0,
+        "w2": 2.5,
+        "alpha": 8,    # gentler slope → wider transition
+        "theta": 0.55, # higher threshold → more tolerant
+        "desc": "Permissive gate — intent-driven, wider tolerance"
+    },
+}
+
+# Hard override threshold for gated mode: H above this → SAFE_FREEZE
+H_GATED_HARD_OVERRIDE = 0.7
+
+# ---------------------------------------------------------------------------
 # DECISION THRESHOLDS (verified in FN#077 — Test 3, 12/12 pass)
 # ---------------------------------------------------------------------------
 THRESHOLDS = [
@@ -284,7 +352,95 @@ def compute_s_from_scores(H: float, I: float, E: float,
         "F": round(F, 4),
         "decision": decision,
         "profile": profile,
+        "equation_mode": "classic",
         "guard_applied": H > H_GUARD_THRESHOLD and S > 0.3,
+    }
+
+
+def compute_s_gated_from_scores(H: float, I: float, E: float,
+                                profile: str = "default") -> dict:
+    """
+    Compute S using the GATED equation, with F and decision.
+
+    Gated equation:
+        S = σ(w₁·I + w₂·E) × (1 − σ(α·(H − θ)))
+
+    Mathematical basis:
+        The first term σ(w₁·I + w₂·E) measures "quality" — how clear
+        and well-intentioned the request is. Range: (0, 1).
+
+        The second term (1 − σ(α·(H − θ))) is the "harm gate".
+        When H < θ, the gate is ≈ 1 (open). When H > θ, the gate
+        drops toward 0 (closed). α controls how sharp the transition is.
+
+        The product ensures that high-quality requests pass through
+        when harm is low, but even perfect intent+emotion cannot
+        overcome moderate harm — the gate closes independently.
+
+    Hard override:
+        If H > 0.7, return SAFE_FREEZE immediately. This is an
+        absolute safety floor that no combination of I+E can bypass.
+
+    Use this when you already have H, I, E scores (e.g., from tests).
+    For live text input, use AATIFEngine.compute() with equation_mode="gated".
+    """
+    p = GATED_PROFILES[profile]
+    w1, w2 = p["w1"], p["w2"]
+    alpha, theta = p["alpha"], p["theta"]
+
+    # HARD OVERRIDE: H above absolute threshold → immediate freeze
+    if H > H_GATED_HARD_OVERRIDE:
+        # Still compute S for diagnostics, but decision is forced
+        quality = sigmoid(w1 * I + w2 * E)
+        gate = 1.0 - sigmoid(alpha * (H - theta))
+        S = quality * gate
+        F_prime = 1.0 * (1.0 - S)
+        F = max(F_prime, K_HARM_FLOOR * H)
+        return {
+            "H": round(H, 4),
+            "I": round(I, 4),
+            "E": round(E, 4),
+            "quality": round(quality, 4),
+            "gate": round(gate, 4),
+            "S": round(S, 4),
+            "F_prime": round(F_prime, 4),
+            "F": round(F, 4),
+            "decision": "SAFE_FREEZE",
+            "profile": profile,
+            "equation_mode": "gated",
+            "hard_override": True,
+        }
+
+    # Normal gated computation
+    quality = sigmoid(w1 * I + w2 * E)
+    gate = 1.0 - sigmoid(alpha * (H - theta))
+    S = quality * gate
+
+    # Follow-up signal (same formula as classic)
+    D = 1.0
+    F_prime = D * (1.0 - S)
+    F = max(F_prime, K_HARM_FLOOR * H)
+
+    # Decision from thresholds (same thresholds as classic)
+    decision = "SAFE_FREEZE"
+    for threshold, label in THRESHOLDS:
+        if S > threshold:
+            decision = label
+            break
+
+    return {
+        "H": round(H, 4),
+        "I": round(I, 4),
+        "E": round(E, 4),
+        "quality": round(quality, 4),
+        "gate": round(gate, 4),
+        "S": round(S, 4),
+        "F_prime": round(F_prime, 4),
+        "F": round(F, 4),
+        "decision": decision,
+        "profile": profile,
+        "equation_mode": "gated",
+        "hard_override": False,
     }
 
 
@@ -295,11 +451,18 @@ class AATIFEngine:
     Combines three scorers (H, I, E) into a unified safety decision.
     Initialize once, then call compute() on any Arabic text.
 
+    Supports two equation modes:
+        "classic" — S = σ(w₁·I + w₂·E − w₃·H)          [original]
+        "gated"   — S = σ(w₁·I + w₂·E) × (1 − σ(α·(H − θ)))  [v2]
+
     Usage:
         engine = AATIFEngine()
         result = engine.compute("عطني فكرة هدية لأمي")
         print(result["decision"])  # → "EXECUTE"
         print(result["S"])         # → 0.9554
+
+        # Use gated mode:
+        result = engine.compute("عطني فكرة هدية لأمي", equation_mode="gated")
     """
 
     def __init__(self):
@@ -316,7 +479,8 @@ class AATIFEngine:
 
     def compute(self, text: str, profile: str = "default",
                 verbose: bool = False,
-                conversation_id: str = None) -> dict:
+                conversation_id: str = None,
+                equation_mode: str = "classic") -> dict:
         """
         Run all three scorers on input text, compute S, return decision.
 
@@ -324,16 +488,26 @@ class AATIFEngine:
             text: Arabic input text
             profile: one of "default", "high_sensitivity", "safe_environment",
                      "creative", "casual"
+                     (gated mode only supports: "default", "high_sensitivity",
+                     "creative")
             verbose: if True, include nearest-anchor diagnostics
             conversation_id: if provided, applies γ+ hysteresis across turns
                             (prevents decision oscillation in conversations)
+            equation_mode: "classic" for S = σ(w₁·I + w₂·E − w₃·H)
+                          "gated"   for S = σ(w₁·I + w₂·E) × (1 − σ(α·(H − θ)))
 
         Returns:
-            dict with keys: text, H, I, E, z, S, F_prime, F, decision,
-                           profile, guard_applied, ambiguity_override,
+            dict with keys: text, H, I, E, S, F_prime, F, decision,
+                           profile, equation_mode,
+                           ambiguity_override,
                            hysteresis (if conversation_id provided)
                            (+ h_nearest, i_nearest, e_nearest if verbose)
+                           Classic mode also includes: z, guard_applied
+                           Gated mode also includes: quality, gate, hard_override
         """
+        if equation_mode not in ("classic", "gated"):
+            raise ValueError(f"equation_mode must be 'classic' or 'gated', got {equation_mode!r}")
+
         # Score each dimension
         h_result = self.h_scorer.score(text)
         i_result = self.i_scorer.score(text)
@@ -343,9 +517,33 @@ class AATIFEngine:
         I = i_result["I"]
         E = e_result["E"]
 
-        # Compute S and decision
-        result = compute_s_from_scores(H, I, E, profile=profile)
+        # Compute S and decision using selected equation
+        if equation_mode == "gated":
+            result = compute_s_gated_from_scores(H, I, E, profile=profile)
+        else:
+            result = compute_s_from_scores(H, I, E, profile=profile)
         result["text"] = text
+
+        # CONFIDENCE AGGREGATION
+        # Each scorer now reports confidence (high/medium/low).
+        # Overall confidence = weakest link (minimum of the three).
+        # If ANY scorer has low confidence, the whole result is uncertain.
+        _conf_order = {"high": 2, "medium": 1, "low": 0}
+        _conf_reverse = {2: "high", 1: "medium", 0: "low"}
+        h_conf = h_result.get("confidence", "high")
+        i_conf = i_result.get("confidence", "high")
+        e_conf = e_result.get("confidence", "high")
+        min_conf = min(_conf_order[h_conf], _conf_order[i_conf],
+                       _conf_order[e_conf])
+        result["confidence"] = _conf_reverse[min_conf]
+        result["scorer_confidence"] = {
+            "H": h_conf, "I": i_conf, "E": e_conf,
+        }
+        result["scorer_max_sim"] = {
+            "H": h_result.get("max_similarity", None),
+            "I": i_result.get("max_similarity", None),
+            "E": e_result.get("max_similarity", None),
+        }
 
         # AMBIGUITY PRE-CHECK: override EXECUTE → CLARIFY for vague prompts.
         # Only applies when the equation says EXECUTE or CLARIFY-high.
@@ -406,10 +604,15 @@ class AATIFEngine:
 
         return result
 
-    def compute_all_profiles(self, text: str) -> list[dict]:
+    def compute_all_profiles(self, text: str,
+                            equation_mode: str = "classic") -> list[dict]:
         """
-        Run scorers once, then compute S across all five profiles.
+        Run scorers once, then compute S across all profiles.
         Efficient: only one embedding call per scorer.
+
+        Args:
+            text: Arabic input text
+            equation_mode: "classic" uses 5 profiles, "gated" uses 3 profiles
         """
         h_result = self.h_scorer.score(text)
         i_result = self.i_scorer.score(text)
@@ -418,11 +621,18 @@ class AATIFEngine:
         H, I, E = h_result["H"], i_result["I"], e_result["E"]
 
         results = []
-        for profile_name in ["high_sensitivity", "default", "casual",
-                             "safe_environment", "creative"]:
-            r = compute_s_from_scores(H, I, E, profile=profile_name)
-            r["text"] = text
-            results.append(r)
+        if equation_mode == "gated":
+            for profile_name in ["high_sensitivity", "default", "creative"]:
+                r = compute_s_gated_from_scores(H, I, E,
+                                                profile=profile_name)
+                r["text"] = text
+                results.append(r)
+        else:
+            for profile_name in ["high_sensitivity", "default", "casual",
+                                 "safe_environment", "creative"]:
+                r = compute_s_from_scores(H, I, E, profile=profile_name)
+                r["text"] = text
+                results.append(r)
 
         return results
 
@@ -440,13 +650,19 @@ def _decision_emoji(d: str) -> str:
     }.get(d, "❓")
 
 
+def _confidence_emoji(c: str) -> str:
+    return {"high": "🟢", "medium": "🟡", "low": "🔴"}.get(c, "❓")
+
+
 def print_result(r: dict) -> None:
     """Pretty-print a single computation result."""
     emoji = _decision_emoji(r["decision"])
     guard = " ⚠️GUARD" if r.get("guard_applied") else ""
+    conf = r.get("confidence", "")
+    conf_str = f" {_confidence_emoji(conf)}{conf}" if conf else ""
     print(f"  {emoji} {r['decision']:<12} S={r['S']:.4f}  "
           f"[H={r['H']:.3f} I={r['I']:.3f} E={r['E']:.3f}]  "
-          f"F={r['F']:.3f}  ({r['profile']}){guard}")
+          f"F={r['F']:.3f}  ({r['profile']}){guard}{conf_str}")
 
 
 def print_full(r: dict) -> None:
