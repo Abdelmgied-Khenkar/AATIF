@@ -106,7 +106,7 @@ AATIF/
 │   ├── test_safety_gate.py          # 12 tests: CBRN gate (Arabic + English)
 │   ├── test_adversarial.py          # 15 adversarial cases (standalone runner, 8 Grok + 7 Claude)
 │   ├── test_dialect_hyperbole.py    # 22 tests: dialect-specific hyperbole detection
-│   ├── test_gated_comparison.py     # 16 tests: gated vs additive equation comparison
+│   ├── test_gated_comparison.py     # 18 tests: gated vs additive equation comparison
 │   └── test_intent_scorer.py        # 30 tests: I scorer aggregation math, bounds, OOD guard
 │
 ├── eval/
