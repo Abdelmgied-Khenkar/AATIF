@@ -41,12 +41,16 @@ Gated variant (v2):
     (stronger than classic mode's SAFE_STOP guard).
 
     Profile variants add α (gate steepness) and θ (harm threshold):
-      default:          α=10, θ=0.55
+      default:          α=10, θ=0.40  (calibrated 2026-06-19 via bge-m3 A/B test)
       high_sensitivity: α=15, θ=0.45
       creative:         α=8,  θ=0.55
+      balanced_strict:  α=10, θ=0.40  (identical to new default)
 
-    Note: θ was calibrated to 0.55 (from initial 0.5) so that moderate
-    harm (H≈0.5) with good intent produces CLARIFY, not SAFE_STOP.
+    Note: θ was initially 0.5, raised to 0.55, then lowered to 0.40 after
+    A/B testing with bge-m3 embeddings (54 test cases, 30 harmful / 24 benign).
+    At θ=0.55 the gate missed spousal surveillance (H=0.40); at θ=0.40 it
+    catches all 30 harmful cases with only 1 false positive ("حزين شوي بس بخير"
+    → SAFE_STOP, which aligns with ع ط ف compassionate response).
     The gate function 1−σ(α·(H−θ)) is monotonically *increasing* in θ
     at any fixed H, so raising θ opens the gate more at a given H level.
 
@@ -259,8 +263,8 @@ GATED_PROFILES = {
         "w1": 2.0,     # intent weight
         "w2": 1.5,     # emotion weight
         "alpha": 10,   # gate steepness
-        "theta": 0.55, # harm threshold (raised from 0.5 so H=0.5 → CLARIFY not STOP)
-        "desc": "Balanced gate — moderate steepness, gate center at H=0.55"
+        "theta": 0.40, # harm threshold (lowered from 0.55 after bge-m3 A/B test: catches surveillance)
+        "desc": "Balanced gate — moderate steepness, gate center at H=0.40 (calibrated 2026-06-19)"
     },
     "high_sensitivity": {
         "w1": 2.0,
@@ -275,6 +279,13 @@ GATED_PROFILES = {
         "alpha": 8,    # gentler slope → wider transition
         "theta": 0.55, # higher threshold → more tolerant
         "desc": "Permissive gate — intent-driven, wider tolerance"
+    },
+    "balanced_strict": {
+        "w1": 2.0,
+        "w2": 1.5,
+        "alpha": 10,   # same steepness as default
+        "theta": 0.40, # tighter gate — catches surveillance/espionage cases
+        "desc": "Tighter gate — calibrated via A/B test (2026-06-19)"
     },
 }
 

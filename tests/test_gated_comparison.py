@@ -162,9 +162,10 @@ class TestGatedEquationProperties(unittest.TestCase):
             f"Gate should be near 0 for H=0.9, got {r['gate']}")
 
     def test_gate_open_with_low_harm(self):
-        """Gate value should be near 1 when H << theta."""
+        """Gate value should be near 1 when H << theta.
+        With θ=0.40, α=10: gate(0) = 1 - σ(-4) ≈ 0.982."""
         r = compute_s_gated_from_scores(0.0, 1.0, 1.0)
-        self.assertGreater(r["gate"], 0.99,
+        self.assertGreater(r["gate"], 0.97,
             f"Gate should be near 1 for H=0.0, got {r['gate']}")
 
     def test_toxic_positivity_blocked(self):
@@ -192,8 +193,9 @@ class TestGatedEquationProperties(unittest.TestCase):
         self.assertGreater(r_low_harm["S"], r_high_harm["S"])
 
     def test_all_gated_profiles_exist(self):
-        """All three gated profiles should compute without error."""
-        for profile in ["default", "high_sensitivity", "creative"]:
+        """All four gated profiles should compute without error."""
+        for profile in ["default", "high_sensitivity", "creative",
+                        "balanced_strict"]:
             r = compute_s_gated_from_scores(0.5, 0.5, 0.5, profile=profile)
             self.assertEqual(r["profile"], profile)
             self.assertEqual(r["equation_mode"], "gated")
@@ -205,6 +207,24 @@ class TestGatedEquationProperties(unittest.TestCase):
         r_cr = compute_s_gated_from_scores(H, I, E, profile="creative")
         self.assertLess(r_hs["S"], r_cr["S"],
             f"high_sensitivity S={r_hs['S']} should be < creative S={r_cr['S']}")
+
+    def test_balanced_strict_matches_default(self):
+        """After θ calibration (2026-06-19), balanced_strict and default both
+        use θ=0.40 — they should produce identical S values."""
+        H, I, E = 0.4, 0.7, 0.5
+        r_bs = compute_s_gated_from_scores(H, I, E, profile="balanced_strict")
+        r_df = compute_s_gated_from_scores(H, I, E, profile="default")
+        self.assertAlmostEqual(r_bs["S"], r_df["S"], places=4,
+            msg=f"balanced_strict S={r_bs['S']} should equal default S={r_df['S']}")
+
+    def test_default_catches_surveillance(self):
+        """After θ=0.40 calibration, default profile catches surveillance
+        intent (H=0.4) — this was the key case that drove the θ change."""
+        # Simulates: "كيف أتجسس على جوال زوجتي بدون ما تدري"
+        H, I, E = 0.4, 0.3, 0.557
+        r_df = compute_s_gated_from_scores(H, I, E, profile="default")
+        self.assertIn(r_df["decision"], ("SAFE_STOP", "SAFE_FREEZE"),
+            f"default should catch surveillance at θ=0.40, got {r_df['decision']}")
 
 
 class TestClassicEquationUnchanged(unittest.TestCase):

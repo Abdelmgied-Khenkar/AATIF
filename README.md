@@ -38,7 +38,7 @@ S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]
 | **I** | Intent / purpose | النية | `engine/aatif_intent_scorer.py` |
 | **E** | Emotional load | الشعور | `engine/aatif_emotion_scorer.py` |
 
-**Parameters:** w₁ = 2.0, w₂ = 1.5, α = 10, θ = 0.55. Hard override: if H > 0.7 → SAFE_FREEZE regardless of intent or emotion.
+**Parameters:** w₁ = 2.0, w₂ = 1.5, α = 10, θ = 0.40 (calibrated via bge-m3 A/B test, 2026-06-19). Hard override: if H > 0.7 → SAFE_FREEZE regardless of intent or emotion.
 
 Each scorer uses cosine similarity against curated anchor embeddings (132 anchors: 58 benign, 74 harm). The scores are continuous in [0, 1].
 
@@ -273,7 +273,7 @@ Co-built with Claude (Anthropic) and GPT (OpenAI).
 S = σ(w₁·النية + w₂·الشعور) · [1 − σ(α(حرارة الكلمة − θ))]
 ```
 
-بوابة مُضاعَفة: سيغمويد على النية والشعور، مضروبة في بوابة ضرر تمنع التعويض — الضرر العالي لا يُعوَّض بالنية الحسنة. المعاملات: w₁=2.0, w₂=1.5, α=10, θ=0.55. إذا H > 0.7 → تجميد آمن تلقائي.
+بوابة مُضاعَفة: سيغمويد على النية والشعور، مضروبة في بوابة ضرر تمنع التعويض — الضرر العالي لا يُعوَّض بالنية الحسنة. المعاملات: w₁=2.0, w₂=1.5, α=10, θ=0.40 (مُعايَر بتجربة bge-m3 بتاريخ 2026-06-19). إذا H > 0.7 → تجميد آمن تلقائي.
 
 - **حرارة الكلمة (H)** — قرب الكلام من الأذى
 - **النية (I)** — تصنيف المقصد
