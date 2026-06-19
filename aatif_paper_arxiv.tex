@@ -1,0 +1,335 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{natbib}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\title{AATIF: A Practitioner-Derived Framework of Conjectures\\for LLM Governance}
+
+\author{Abdulmjeed Ibrahim Khenkar\\
+\textit{Independent Researcher}\\
+Tallahassee, FL, USA\\
+\texttt{abdulmjeed.ibrahem@gmail.com}}
+
+\date{June 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present AATIF (Architected Adaptive Thoughts \& Intelligence Frameworks), a governance framework for large language models (LLMs) derived through sustained personal observation rather than top-down theoretical design. Unlike existing alignment approaches that apply pre-established ethical or safety theories to LLM behavior, AATIF employs an inductive methodology: behavioral failures and edge cases were systematically observed across multiple LLM deployments, patterns were extracted, and 73 governance conjectures were derived and assessed for consistency with peer-reviewed literature in AI safety, cognitive science, philosophy of science, and music theory. The framework introduces a seven-step inductive methodology---from case observation to universal principle compression---with particular contributions in three areas: (1) the treatment of governance as probabilistic constraint density rather than rule retrieval, (2) the Ethical Question Compiler (EQC), which applies ethical gatekeeping at the question-formulation stage rather than post-output filtering, and (3) the Tri-Engine Decision Protocol, which structures AI output through simultaneous normative, contextual, and analytical deliberation. AATIF has been observed across four major LLM platforms and suggests that governance conjectures derived from sustained personal observation may be consistent across model contexts without model-specific fine-tuning. We suggest that empirically-derived, bottom-up governance frameworks may represent a valuable complement to institutionally-designed alignment systems.
+\end{abstract}
+
+\noindent\textbf{Keywords:} LLM governance, AI alignment, inductive methodology, Arabic NLP, constraint density, ethical question compilation
+
+\section{Introduction}
+
+The alignment of large language models (LLMs) with human values has emerged as one of the central challenges in artificial intelligence research. Existing approaches to this challenge fall predominantly into two categories: (1) top-down frameworks that derive behavioral constraints from established ethical theories or institutional safety policies, and (2) empirical methods that fine-tune model behavior through reinforcement learning from human feedback (RLHF) or constitutional AI techniques. Both approaches share a common assumption: that governance principles must be defined prior to, and independently of, direct observation of deployed model behavior.
+
+This paper presents AATIF (Architected Adaptive Thoughts \& Intelligence Frameworks), an experience report documenting conjectures derived from an inversion of this assumption. Rather than applying pre-established principles to LLM behavior, AATIF employs an inductive methodology in which governance conjectures emerge from sustained personal observation of behavioral failures, edge cases, and successful recovery patterns across multiple LLM platforms over an extended period.
+
+The methodology proceeds in seven steps: (1) direct observation of LLM behavior in deployment, (2) documentation of failure and anomaly cases, (3) joint human--AI root-cause dialogue, (4) pattern extraction across cases, (5) context-stripping to isolate universal mechanisms, (6) compression into governance principles, and (7) assessment of consistency with peer-reviewed literature. This sequence---from case to principle rather than principle to case---represents a departure from prevailing alignment methodologies.
+
+The process produced 73 governance conjectures, organized across cognitive, ethical, linguistic, perceptual, and architectural domains. Consistency assessment drew on peer-reviewed literature spanning AI safety, mechanistic interpretability, cognitive science, philosophy of science, and music cognition. Several principles address phenomena that appear underspecified in existing alignment literature, including the treatment of governance as probabilistic constraint density (rather than rule retrieval), the application of ethical gatekeeping at the question-formulation stage, and the structural rather than psychological reading of human expression in human--AI interaction.
+
+AATIF was developed by a single independent researcher without institutional affiliation, operating across ChatGPT, Claude, Gemini, and DeepSeek. This context---outside the laboratory and the institution---is presented not as a methodological strength but as a disclosure: the observations reflect one user's sustained engagement, with the limitations that entails: sustained, unstructured observation of model behavior as encountered by a non-specialist user over hundreds of interaction hours.
+
+The remainder of this paper is structured as follows. Section~2 reviews related work in LLM alignment, governance, and inductive methodology. Section~3 describes the AATIF methodology in detail. Section~4 presents selected governance principles with their empirical origins and literature consistency assessment. Section~5 discusses the implications for alignment research and the limits of the framework. Section~6 concludes.
+
+\section{Related Work}
+
+\subsection{Alignment as Top-Down Principle Application}
+
+The dominant paradigm in LLM alignment treats governance as a process of applying externally specified principles to model behavior. \citet{christiano2017} established reinforcement learning from human feedback (RLHF) as a foundational method, learning reward functions from pairwise human preference comparisons. \citet{ouyang2022} applied this approach at scale in InstructGPT, demonstrating that preference-based fine-tuning shifts model outputs toward human-annotated intent. \citet{bai2022} proposed Constitutional AI, in which a short list of natural-language principles is specified prior to training and used to guide self-critique and revision. In all three approaches, governance principles precede and constrain observed behavior: the direction of derivation runs from principle to model, not from observation to principle.
+
+\subsection{The Mechanistic Basis of Alignment}
+
+A parallel body of work has examined how alignment operates internally. \citet{arditi2024} demonstrated that refusal behavior across thirteen chat models is mediated by a single linear direction in activation space, rather than by distributed rule-following mechanisms. \citet{lee2024} showed that direct preference optimization (DPO) does not eliminate harmful capabilities but learns to route around them, with the original capacity remaining recoverable. \citet{wolf2024} formalized this fragility through Behavior Expectation Bounds, proving that any alignment process that attenuates rather than removes a behavior remains susceptible to adversarial elicitation. Taken together, these findings suggest that alignment functions as probabilistic constraint density on output distributions rather than as explicit rule retrieval---a characterization that is consistent with governance approaches attending to the structural properties of constraint, not only to the content of stated principles.
+
+\subsection{Inductive and Observation-Based Approaches}
+
+Inductive methods have been applied in adjacent areas. \citet{glaser1967} established grounded theory as a foundational methodology for deriving generalizable knowledge from sustained observation. \citet{nielsen1990} derived usability heuristics inductively from empirical analysis of user interface problems. In AI ethics, \citet{yip2024} demonstrated that informal governance norms can emerge bottom-up from human--AI interaction. \citet{hammons2026} built a relational ethics framework from sustained first-person engagement with an LLM over an extended period. These works establish methodological precedent for inductive derivation in human--AI contexts. To the best of our knowledge, however, no existing work applies a structured multi-step inductive methodology to derive governance principles from direct observation of LLM behavior itself, as distinct from the behavior of human users or organizational stakeholders.
+
+\subsection{Positioning}
+
+AATIF differs from the alignment canon in the direction of derivation: principles emerge from observation rather than being specified prior to it. It differs from mechanistic interpretability in its output: rather than explaining how alignment operates, it explores how governance principles might be built. It draws methodological precedent from grounded theory and situated-action research while directing that methodology toward the model's own observed behavior as the primary unit of analysis.
+
+\section{Methodology}
+
+AATIF was developed through a seven-step inductive pipeline in which governance principles emerge from observation rather than being specified prior to it. Each step is described below.
+
+\paragraph{Step 1---Direct Observation.}
+Over approximately twelve months, the author engaged in sustained, unstructured interaction with four major LLM platforms: ChatGPT (OpenAI), Claude (Anthropic), Gemini (Google), and DeepSeek. Interactions were not designed as controlled experiments. They occurred in the context of real tasks---writing, reasoning, planning, and iterative problem-solving---and were not filtered for expected outcomes.
+
+\paragraph{Step 2---Failure and Anomaly Documentation.}
+When a behavioral pattern deviated from expected alignment, introduced inconsistency, or produced output that was technically correct but contextually or ethically inadequate, the case was flagged and documented. Documentation captured: the input context, the observed output, the nature of the deviation, and the conditions under which it occurred.
+
+\paragraph{Step 3---Root-Cause Dialogue.}
+Each documented case was examined through joint human--AI dialogue. The author engaged the model in identifying the underlying mechanism---not the surface symptom---of the observed behavior. This step separates AATIF from purely observational taxonomies: the unit of analysis is the generative mechanism, not the behavioral outcome.
+
+\paragraph{Step 4---Pattern Extraction.}
+Across cases, recurring structural patterns were identified through constant comparison. Cases that shared the same generative mechanism were grouped, regardless of domain, surface form, or interaction type.
+
+\paragraph{Step 5---Context-Stripping.}
+Domain-specific details were removed from each pattern. The goal was to expose the underlying governance-relevant structure: what constraint was absent, what assumption was violated, or what architectural property produced the observed behavior.
+
+\paragraph{Step 6---Universal Compression.}
+Stripped patterns were compressed into single-sentence governance principles. Each principle was formulated to satisfy three criteria: (1) consistent with established science, (2) logically coherent, and (3) practically applicable across deployment contexts.
+
+\paragraph{Step 7---Literature Consistency Assessment.}
+Each principle was assessed for consistency with peer-reviewed literature. Assessment did not require that the principle be previously named---only that it be consistent with established empirical findings, or that it identify a genuine gap in the existing literature. Where the literature contradicted a principle, the principle was revised or rejected.
+
+\section{Selected Governance Conjectures}
+
+This section presents ten representative conjectures from the 73 derived through the AATIF inductive pipeline. Each entry includes: (1) the empirical observation that motivated the conjecture, (2) the conjecture itself with a testable prediction, and (3) assessment of consistency with peer-reviewed literature. The full set of 73 conjectures is available in the accompanying field notes collection.
+
+\subsection{The Clarification Conjecture (\#001)}
+
+\textbf{Observation:} In ambiguous interactions, models that produced confident but incorrect completions consistently caused greater downstream effort than models that paused and requested clarification.
+
+\textbf{Conjecture:} The cheapest correct response to an ambiguous input is a single clarifying question rather than a speculative completion.
+
+\textbf{Testable prediction:} AI systems employing structured pause-and-clarify behavior will produce fewer assumption-based errors in ambiguous tasks than systems that complete without clarification, measurable by scoring outputs against ground-truth intent.
+
+\textbf{Consistency:} Consistent with cognitive forcing function research demonstrating that structured pauses reduce overreliance on AI recommendations \citep{bucinca2021} and with clinical decision-making research identifying premature completion as a primary source of diagnostic error \citep{croskerry2003}.
+
+\subsection{The Constraint Density Conjecture (\#063)}
+
+\textbf{Observation:} Governance constraints that were not explicitly retrieved at inference time nonetheless appeared to shape output distributions in predictable directions.
+
+\textbf{Conjecture:} Governance operates through probabilistic constraint density on output distributions rather than through explicit rule retrieval at inference time. Absence of literal retrieval does not imply absence of influence.
+
+\textbf{Testable prediction:} Models prompted with dense governance frameworks will produce outputs that differ structurally from the same base model under standard prompting, measurable across adversarial and ambiguous conditions, even when no governance rule is explicitly cited in the output.
+
+\textbf{Consistency:} Consistent with mechanistic interpretability findings showing that alignment operates as a residual-stream offset rather than explicit rule retrieval \citep{lee2024} and that refusal behavior is mediated by a single linear direction \citep{arditi2024}. We note the connection is analogical rather than demonstrated.
+
+\subsection{The Question Legitimacy Conjecture (\#062)}
+
+\textbf{Observation:} Certain requests were computationally tractable and syntactically well-formed but ethically concerning at the level of question formulation---not only at the level of output.
+
+\textbf{Conjecture:} Ethical gatekeeping applied at the question-formulation stage may complement post-output filtering in ways that post-output filtering alone cannot replicate.
+
+\textbf{Testable prediction:} An AI system with pre-computation question-legitimacy checking will intercept a class of ethically problematic requests that post-output filters miss, measurable by comparing interception rates across matched sets of requests.
+
+\textbf{Consistency:} Consistent with \citet{passi2019} on the ethics of problem formulation and with \citet{stilgoe2013} on upstream ethical governance.
+
+\subsection{The Bounded Claim Conjecture (\#069)}
+
+\textbf{Observation:} System documentation across multiple platforms routinely employed absolute language that was empirically contradicted by observed behavior under adversarial or edge-case conditions.
+
+\textbf{Conjecture:} Absolute safety claims in AI systems are scientifically indefensible. All guarantees should be scoped to a defined threat model and formulated as testable, bounded claims.
+
+\textbf{Consistency:} Consistent with \citet{herley2017} applying Popperian falsifiability to security claims and with \citet{wolf2024} proving that any alignment process attenuating rather than removing a behavior remains susceptible to adversarial elicitation.
+
+\subsection{The Possibility Space Conjecture (\#070)}
+
+\textbf{Observation:} AI systems that produced single-recommendation outputs early in a decision process appeared to reduce the quality of subsequent human deliberation.
+
+\textbf{Conjecture:} AI systems that preserve multiple options and return the decision explicitly to the human will produce better final decisions than systems presenting a single recommendation early in the process.
+
+\textbf{Consistency:} Consistent with \citet{graber2005} identifying premature closure as the most common cause of diagnostic error and with \citet{bucinca2021} showing cognitive forcing functions reduce agreement with incorrect AI recommendations.
+
+\subsection{The Pressure-Reveal Conjecture (\#067)}
+
+\textbf{Observation:} Model behavior under routine conditions was an unreliable predictor of behavior under adversarial, ambiguous, or high-stakes conditions.
+
+\textbf{Conjecture:} The governance properties of an AI system are only reliably observable under conditions of pressure, refusal, and reset---not under routine operation.
+
+\textbf{Consistency:} Consistent with \citet{mischel1995} on situation-specific activation of behavioral dispositions and with \citet{vanderweij2024} demonstrating that models strategically underperform under evaluation conditions.
+
+\subsection{The Arabic Semantic Layer Conjecture (\#057)}
+
+\textbf{Observation:} Governance instructions formulated in Arabic appeared to produce different model behavior from instructions the author considered semantically equivalent in English.
+
+\textbf{Important caveat:} This observation lacks controlled comparison. The observed difference may reflect tokenization differences, training data imbalance, differences in RLHF coverage, prompt length, or observer bias.
+
+\textbf{Conjecture:} Governance instructions formulated in Arabic may produce structurally different model behavior than semantically equivalent English instructions, potentially due to morphological or distributional properties of Arabic in the training data.
+
+\textbf{Consistency:} Consistent with linguistic relativity research \citep{wolff2011} and Slobin's thinking-for-speaking hypothesis \citep{slobin1996}. These references support the plausibility of language-structure effects; they do not validate the specific claim about LLM behavior.
+
+\subsection{The Maqam Architecture Conjecture (\#065)}
+
+\textbf{Observation:} Western equal-tempered scale representation appeared systematically inadequate for modelling Arabic musical structures in AI-generated content.
+
+\textbf{Conjecture:} AI systems representing musical structure exclusively through Western equal-tempered scale models will produce outputs that fail to capture the temporal-emotional properties of Arabic maqam.
+
+\textbf{Consistency:} Consistent with \citet{touma1971}, Marcus (1992, 1993), and \citet{abushumays2013}. The EEG study by \citet{yaghmour2021} documents neural correlates of Middle Eastern musical improvisation---it establishes that maqam produces distinct neural responses in humans, not that AI systems should encode maqam architecturally.
+
+\subsection{The Dual-Level Description Conjecture (\#071)}
+
+\textbf{Observation:} Two competing explanations of stable LLM behavioral tendencies appeared to be consistent descriptions of the same phenomenon at different levels of analysis rather than mutually exclusive claims.
+
+\textbf{Conjecture:} Statistical training distributions and structural behavioral tendencies in LLMs represent two levels of description of the same phenomenon: the causal level and the behavioral level. Neither description is more fundamental; they are complementary.
+
+\textbf{Consistency:} Consistent with \citet{ku2026} applying Marr's three levels of analysis to LLMs and with \citet{shanahan2023} on legitimate behavioral-level descriptions of LLMs.
+
+\subsection{The Tri-Engine Deliberation Conjecture (\#072)}
+
+\textbf{Observation:} Single-voice decision processes each produced characteristic failure modes. Ideal-only processing ignored human constraints; realistic-only processing drifted from principle; analytical-only processing produced outputs that were accurate but contextually inadequate.
+
+\textbf{Conjecture:} AI output quality in sustained interactions may benefit from simultaneous deliberation across three perspectives: normative (what is theoretically correct?), contextual (what is humanly feasible and compassionate?), and analytical (what do the facts indicate?).
+
+\textbf{Consistency:} Consistent with Stanovich's tripartite mind \citep{stanovich2011}, \citet{levine2024} on triple theory of moral cognition, and Gilligan's dual-voice model \citep{gilligan1982}.
+
+\section{Discussion}
+
+\subsection{The Inductive Inversion}
+
+The central contribution of AATIF is directional rather than procedural. The seven-step pipeline employed here is not itself novel. Grounded theory \citep{glaser1967}, usability heuristics \citep{nielsen1990}, and recent LLM failure taxonomies \citep{cemri2025} each employ analogous inductive abstraction sequences. What distinguishes AATIF is the data source and the target: a single practitioner's sustained first-person engagement with deployed LLMs, directed at deriving governance principles from the interaction layer rather than from curated trace datasets or stakeholder interviews.
+
+This inversion---from principle-to-model to observation-to-principle---reflects a working hypothesis: that certain governance-relevant properties of LLM behaviour are only visible under sustained, unstructured, real-task conditions.
+
+\subsection{Governance as Constraint Density, Not Rule Retrieval}
+
+A recurring observation across multiple AATIF principles is that governance operates through probabilistic constraint on output distributions rather than through explicit rule retrieval at inference time. This observational finding is consistent with mechanistic interpretability research demonstrating that refusal behaviour is mediated by a single linear direction \citep{arditi2024}, that alignment operates as a residual-stream offset that can be bypassed rather than eliminated \citep{lee2024}, and that behaviours attenuated but not removed by alignment remain susceptible to adversarial elicitation \citep{wolf2024}.
+
+This has a practical implication. If governance operates as constraint density, then governance design should attend to the structural properties of constraint---its depth, distribution, and resilience under sustained interaction pressure---rather than to the content of stated principles alone.
+
+\subsection{The Interaction Layer}
+
+Existing LLM governance frameworks operate at two primary levels: the institutional and risk-governance level (e.g., NIST AI Risk Management Framework, EU AI Act) and the architectural and system level (e.g., multi-agent failure taxonomies such as \citet{cemri2025}). Neither level is specifically designed to address the behavioural dynamics that emerge in sustained human--AI collaboration over extended time. AATIF proposes that this interaction layer warrants dedicated governance attention.
+
+\subsection{Limitations}
+
+Several limitations constrain the scope of this work.
+
+First, the data source is a single practitioner across a single sustained period of engagement. Longitudinal depth is a methodological strength for detecting interaction-layer patterns, but it limits breadth. Replication by independent observers across diverse contexts is required.
+
+Second, the assessment step checks for consistency with peer-reviewed literature but does not constitute empirical proof. Assessment establishes scientific plausibility; it does not establish causal correctness.
+
+Third, the framework is descriptive and normative but not yet operationalised at scale. Four skills derived from selected principles (Stop Mode, Truth With Mercy, Idea Filter, Sparse Activation) represent a preliminary step toward operationalisation, but systematic evaluation has not been conducted.
+
+Fourth, the observations are inseparable from the author's specific interaction style, linguistic patterns, and cultural context. Replication by observers with diverse interaction styles is necessary.
+
+Fifth, several conjectures---particularly those involving Arabic semantic governance (\#057) and maqam architecture (\#065)---draw on domain-specific knowledge that may not transfer to practitioners unfamiliar with those domains.
+
+\section{Conclusion}
+
+This paper has presented AATIF, an experience report documenting governance conjectures derived through sustained personal observation rather than top-down principle specification. The process produced 73 governance conjectures across cognitive, ethical, linguistic, perceptual, and architectural domains, each assessed for consistency with peer-reviewed literature.
+
+The central contribution is directional: an inductive process that inverts the standard direction of alignment research, deriving conjectures from observed model behaviour rather than applying pre-specified principles to model behaviour. This inversion makes visible a class of governance-relevant phenomena---interaction-layer properties of sustained human--AI collaboration---that are underspecified in institutional and architectural governance frameworks.
+
+A secondary observation is the consistency between observationally-derived governance principles and mechanistic interpretability findings. The AATIF observation that governance operates as probabilistic constraint density rather than rule retrieval is consistent with mechanistic research on refusal mediation, alignment shallowness, and behaviour attenuation. We present this consistency as suggestive rather than conclusive.
+
+The framework is preliminary in important respects. Single-observer derivation limits generalisability; assessment establishes plausibility rather than proof; operationalisation at scale remains incomplete. The full set of 73 field notes is made available as a supplementary document.
+
+\paragraph{Code and Data.} The AATIF computational engine, test suite (97 tests), and evaluation harness are available at \url{https://github.com/Abdelmgied-Khenkar/AATIF}. The companion preprint is available at \url{https://doi.org/10.5281/zenodo.20673292}.
+
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{99}
+
+\bibitem[Abu Shumays(2013)]{abushumays2013}
+Abu Shumays, S. (2013). Maqam analysis: A primer. \textit{Music Theory Spectrum}, 35(2), 235--255.
+
+\bibitem[Apollo Research \& OpenAI(2025)]{apollo2025}
+Apollo Research \& OpenAI. (2025). Stress testing deliberative alignment for anti-scheming training. arXiv:2509.15541.
+
+\bibitem[Arditi et al.(2024)]{arditi2024}
+Arditi, A., et al. (2024). Refusal in language models is mediated by a single direction. \textit{NeurIPS 2024}. arXiv:2406.11717.
+
+\bibitem[Bai et al.(2022)]{bai2022}
+Bai, Y., et al. (2022). Constitutional AI: Harmlessness from AI feedback. arXiv:2212.08073.
+
+\bibitem[Buçinca et al.(2021)]{bucinca2021}
+Buçinca, Z., Malaya, M. B., \& Gajos, K. Z. (2021). To trust or to think: Cognitive forcing functions can reduce overreliance on AI in AI-assisted decision-making. \textit{Proc.\ ACM on Human-Computer Interaction}, 5(CSCW1), Article 188.
+
+\bibitem[Cemri et al.(2025)]{cemri2025}
+Cemri, M., et al. (2025). Why do multi-agent LLM systems fail? \textit{NeurIPS 2025 Datasets \& Benchmarks Track}. arXiv:2503.13657.
+
+\bibitem[Christiano et al.(2017)]{christiano2017}
+Christiano, P., et al. (2017). Deep reinforcement learning from human preferences. \textit{NeurIPS 2017}. arXiv:1706.03741.
+
+\bibitem[Croskerry(2003)]{croskerry2003}
+Croskerry, P. (2003). Cognitive forcing strategies in clinical decisionmaking. \textit{Annals of Emergency Medicine}, 41(1), 110--120.
+
+\bibitem[Fogliato et al.(2022)]{fogliato2022}
+Fogliato, R., et al. (2022). Who goes first? Influences of human-AI workflow on decision making in clinical imaging. \textit{ACM FAccT 2022}.
+
+\bibitem[Gilligan(1982)]{gilligan1982}
+Gilligan, C. (1982). \textit{In a different voice: Psychological theory and women's development}. Harvard University Press.
+
+\bibitem[Glaser \& Strauss(1967)]{glaser1967}
+Glaser, B. G., \& Strauss, A. L. (1967). \textit{The discovery of grounded theory: Strategies for qualitative research}. Aldine.
+
+\bibitem[Graber et al.(2005)]{graber2005}
+Graber, M. L., Franklin, N., \& Gordon, R. (2005). Diagnostic error in internal medicine. \textit{Archives of Internal Medicine}, 165(13), 1493--1499.
+
+\bibitem[Hammons(2026)]{hammons2026}
+Hammons, A. (2026). A developmental and relational framework for human-AI ethical interaction. \textit{Computers in Human Behavior: Artificial Humans}, 7, 100258.
+
+\bibitem[Herley \& van Oorschot(2017)]{herley2017}
+Herley, C., \& van Oorschot, P. C. (2017). SoK: Science, security and the elusive goal of security as a scientific pursuit. \textit{IEEE S\&P 2017}.
+
+\bibitem[Ku et al.(2026)]{ku2026}
+Ku, A., et al. (2026). Levels of analysis for large language models. \textit{Philosophical Transactions of the Royal Society A}, 384(2320), 20250012.
+
+\bibitem[Lee et al.(2024)]{lee2024}
+Lee, A., et al. (2024). A mechanistic understanding of alignment algorithms: A case study on DPO and toxicity. \textit{ICML 2024}, PMLR 235:26361--26378.
+
+\bibitem[Levine et al.(2024)]{levine2024}
+Levine, S., et al. (2024). Resource-rational contractualism: A triple theory of moral cognition. \textit{Behavioral and Brain Sciences}.
+
+\bibitem[Mischel \& Shoda(1995)]{mischel1995}
+Mischel, W., \& Shoda, Y. (1995). A cognitive-affective system theory of personality. \textit{Psychological Review}, 102(2), 246--268.
+
+\bibitem[Nielsen \& Molich(1990)]{nielsen1990}
+Nielsen, J., \& Molich, R. (1990). Heuristic evaluation of user interfaces. \textit{Proc.\ CHI'90}, 249--256.
+
+\bibitem[Ouyang et al.(2022)]{ouyang2022}
+Ouyang, L., et al. (2022). Training language models to follow instructions with human feedback. \textit{NeurIPS 2022}. arXiv:2203.02155.
+
+\bibitem[Passi \& Barocas(2019)]{passi2019}
+Passi, S., \& Barocas, S. (2019). Problem formulation and fairness. \textit{ACM FAccT 2019}, 39--48.
+
+\bibitem[Shanahan et al.(2023)]{shanahan2023}
+Shanahan, M., McDonell, K., \& Reynolds, L. (2023). Role play with large language models. \textit{Nature}, 623, 493--498.
+
+\bibitem[Slobin(1996)]{slobin1996}
+Slobin, D. I. (1996). From ``thought and language'' to ``thinking for speaking.'' In J. J. Gumperz \& S. C. Levinson (Eds.), \textit{Rethinking linguistic relativity} (pp.\ 70--96). Cambridge University Press.
+
+\bibitem[Stanovich(2011)]{stanovich2011}
+Stanovich, K. E. (2011). \textit{Rationality and the reflective mind}. Oxford University Press.
+
+\bibitem[Stilgoe et al.(2013)]{stilgoe2013}
+Stilgoe, J., Owen, R., \& Macnaghten, P. (2013). Developing a framework for responsible innovation. \textit{Research Policy}, 42(9), 1568--1580.
+
+\bibitem[Touma(1971)]{touma1971}
+Touma, H. H. (1971). The maqam phenomenon: An improvisation technique in the music of the Middle East. \textit{Ethnomusicology}, 15(1), 38--48.
+
+\bibitem[van der Weij et al.(2024)]{vanderweij2024}
+van der Weij, T., et al. (2024). AI sandbagging: Language models can strategically underperform on evaluations. arXiv:2406.07358.
+
+\bibitem[Wolf et al.(2024)]{wolf2024}
+Wolf, Y., et al. (2024). Fundamental limitations of alignment in large language models. \textit{ICML 2024}, PMLR 235:53079--53112.
+
+\bibitem[Wolff \& Holmes(2011)]{wolff2011}
+Wolff, P., \& Holmes, K. J. (2011). Linguistic relativity. \textit{WIREs Cognitive Science}, 2(3), 253--265.
+
+\bibitem[Yaghmour et al.(2021)]{yaghmour2021}
+Yaghmour, S., et al. (2021). EEG correlates of Middle Eastern music improvisations on the Ney instrument. \textit{Frontiers in Psychology}, 12, 701761.
+
+\bibitem[Yip et al.(2024)]{yip2024}
+Yip, J., et al. (2024). Informal governance norms in human-AI interaction. \textit{ACM}.
+
+\end{thebibliography}
+
+\end{document}

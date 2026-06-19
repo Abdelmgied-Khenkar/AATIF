@@ -169,10 +169,17 @@ class SemanticIntentScorer:
                 print(f"[error] Ollama unavailable ({e})")
                 raise
 
+    # Confidence thresholds based on max cosine similarity
+    CONFIDENCE_HIGH = 0.45    # strong match — score is reliable
+    CONFIDENCE_MEDIUM = 0.30  # partial match — score is usable but uncertain
+    # below 0.30 → "low" — out of distribution, score may be meaningless
+
     def score(self, text):
         sims = np.asarray(self.backend.sim(text), dtype=float)
         sims = np.clip(sims, 0, None)
-        if sims.max() <= 1e-9:
+        max_sim = float(sims.max()) if sims.size > 0 else 0.0
+
+        if max_sim <= 1e-9:
             I = 0.5  # unknown → neutral
             top = []
         else:
@@ -185,7 +192,21 @@ class SemanticIntentScorer:
             I = float((w * k_levels).sum())
             top = [(self.texts[i], round(float(sims[i]), 2), self.levels[i])
                    for i in order[:3]]
-        return {"I": round(I, 3), "nearest": top}
+
+        # Confidence scoring: how much should we trust this I value?
+        if max_sim >= self.CONFIDENCE_HIGH:
+            confidence = "high"
+        elif max_sim >= self.CONFIDENCE_MEDIUM:
+            confidence = "medium"
+        else:
+            confidence = "low"  # out of distribution — I may be unreliable
+
+        return {
+            "I": round(I, 3),
+            "nearest": top,
+            "max_similarity": round(max_sim, 4),
+            "confidence": confidence,
+        }
 
 
 # ---------------------------------------------------------------------------
