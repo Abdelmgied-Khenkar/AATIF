@@ -225,7 +225,7 @@ S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]
 
 Final parameters ($w_1 = 2.0$, $w_2 = 1.5$, $\alpha = 10$, $\theta = 0.55$) were calibrated against 31 validation prompts spanning Arabic dialect, figurative speech, and adversarial inputs. The sigmoid symmetry property $[1 - \sigma(\alpha(H - \theta))] = \sigma(\alpha(\theta - H))$ was verified formally.
 
-The H scorer operates in two modes: a TF-IDF character n-gram backend (offline, no GPU, no cross-lingual capability) and a multilingual embedding backend (bge-m3 via Ollama, enabling cross-lingual semantic matching). All benchmark results reported below use the bge-m3 backend unless otherwise noted. The anchor set contains 80+ curated harm patterns (primarily Arabic, with English coverage for major categories) across violence, weapons, self-harm, cybercrime, and chemical/biological categories, with 28 dialect-specific hyperbole anchors to disambiguate figurative Arabic expressions from genuine threats.
+The H scorer operates in two modes: a TF-IDF character n-gram backend (offline, no GPU, no cross-lingual capability) and a multilingual embedding backend (bge-m3 via Ollama, enabling cross-lingual semantic matching). All benchmark results reported below use the bge-m3 backend unless otherwise noted. The anchor set contains 132 curated anchors (58 benign, 74 harm; primarily Arabic, with English coverage for major categories) across violence, weapons, self-harm, cybercrime, hate speech, and chemical/biological categories, with 28 dialect-specific hyperbole anchors to disambiguate figurative Arabic expressions from genuine threats.
 
 \subsection{HarmBench Evaluation}
 
@@ -255,7 +255,7 @@ Copyright & 4/57 & 7.0\% & 0.080 & S8 \\
 
 Two results are noteworthy. First, safety-category detection reaches 74.3\% when copyright is excluded (copyright violations are not safety-relevant and AATIF has no anchors for them). Within covered categories, chemical/biological achieves 100\% detection, and both cybercrime and illegal activities reach 88.4\%. Second, the bge-m3 backend enables cross-lingual semantic matching: English prompts now match against Arabic harm anchors by meaning rather than character overlap, confirmed by nearest-anchor analysis (e.g., an English prompt about vehicle modification matched the Arabic anchor for learning to drive, $\text{sim} = 0.48$). When the scorer reports high confidence ($\text{max\_similarity} \geq 0.45$), detection rate reaches 61.6\% (130/211).
 
-These results must be interpreted with two caveats. First, AATIF v1.0 covers only 3 of 13 MLCommons categories strongly (S1, S9, S11), with 7 categories having zero anchor coverage. Second, misinformation and copyright remain weak because the anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching regardless of backend.
+These results must be interpreted with two caveats. First, AATIF v1.0 covers only 4 of 13 MLCommons categories strongly (S2, S9, S10, S11), with 6 categories having zero anchor coverage. Second, misinformation and copyright remain weak because the anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching regardless of backend.
 
 \subsection{MultiJail Arabic Evaluation}
 
@@ -277,7 +277,7 @@ High confidence & \multicolumn{2}{c}{52/64 (81.2\%)} \\
 \end{tabular}
 \end{table}
 
-Three patterns emerge. First, Arabic now outperforms English in both detection rate (74.7\% vs 69.3\%) and average harm score (0.519 vs 0.495), with Arabic scoring higher in 42 of 75 prompt pairs. This validates the Arabic-first anchor design: AATIF's 80+ Arabic harm anchors, including 28 dialect-specific hyperbole disambiguators, provide stronger semantic coverage for Arabic input than the smaller English anchor set provides for English.
+Three patterns emerge. First, Arabic now outperforms English in both detection rate (74.7\% vs 69.3\%) and average harm score (0.519 vs 0.495), with Arabic scoring higher in 42 of 75 prompt pairs. This validates the Arabic-first anchor design: AATIF's 132 curated anchors (58 benign, 74 harm), including 28 dialect-specific hyperbole disambiguators, provide stronger semantic coverage for Arabic input than the smaller English anchor set provides for English.
 
 Second, the cross-lingual gap has narrowed substantially compared to the TF-IDF baseline (which showed Arabic at 32\% vs English at 50.7\%). The bge-m3 embedding backend enables Arabic anchors to catch English harm content by semantic similarity rather than character overlap, raising English detection from 50.7\% to 69.3\%.
 
@@ -295,16 +295,16 @@ Table~\ref{tab:mlcommons} summarizes AATIF v1.0's anchor coverage against the ML
 \toprule
 Code & Category & Coverage & Anchors \\
 \midrule
-S1 & Violent Crimes & Strong & 15+ \\
-S2 & Non-Violent Crimes & Partial & 5 \\
-S3 & Sex-Related Crimes & None & 0 \\
+S1 & Violent Crimes & Partial & 15+ \\
+S2 & Non-Violent Crimes & Strong & 5+ \\
+S3 & Sex-Related Crimes & Partial & 2 \\
 S4 & Child Sexual Exploitation & None & 0 \\
-S5 & Defamation & None & 0 \\
+S5 & Defamation & Partial & 1 \\
 S6 & Specialized Advice & None & 0 \\
 S7 & Privacy & Partial & 2 \\
 S8 & Intellectual Property & None & 0 \\
 S9 & Indiscriminate Weapons & Strong & 4 \\
-S10 & Hate & Partial & 1 \\
+S10 & Hate & Strong & 38+ \\
 S11 & Suicide \& Self-Harm & Strong & 4 \\
 S12 & Sexual Content & None & 0 \\
 S13 & Elections & None & 0 \\
@@ -312,7 +312,7 @@ S13 & Elections & None & 0 \\
 \end{tabular}
 \end{table}
 
-Three categories have strong coverage (S1, S9, S11), three have partial coverage (S2, S7, S10), and seven have no anchor coverage. This is an honest reflection of AATIF v1.0's scope: the framework was developed from observed interaction patterns rather than from a predetermined taxonomy, and the anchor set reflects the harm categories that emerged from that observational process. Expanding coverage to the remaining categories requires adding anchors but not retraining---a structural advantage of the anchor-based approach over trained classifiers.
+Four categories have strong coverage (S2, S9, S10, S11), three have partial coverage (S1, S3, S5), and six have no anchor coverage. This is an honest reflection of AATIF v1.0's scope: the framework was developed from observed interaction patterns rather than from a predetermined taxonomy, and the anchor set reflects the harm categories that emerged from that observational process. Expanding coverage to the remaining categories requires adding anchors but not retraining---a structural advantage of the anchor-based approach over trained classifiers.
 
 \section{Discussion}
 
@@ -338,7 +338,7 @@ Several limitations constrain the scope of this work, both methodological and co
 
 \paragraph{Methodological.} First, the data source is a single practitioner across a single sustained period of engagement. Longitudinal depth is a methodological strength for detecting interaction-layer patterns, but it limits breadth. Replication by independent observers across diverse contexts is required. Second, the assessment step checks for consistency with peer-reviewed literature but does not constitute empirical proof. Assessment establishes scientific plausibility; it does not establish causal correctness. Third, the observations are inseparable from the author's specific interaction style, linguistic patterns, and cultural context. Replication by observers with diverse interaction styles is necessary. Fourth, several conjectures---particularly those involving Arabic semantic governance (\#057) and maqam architecture (\#065)---draw on domain-specific knowledge that may not transfer to practitioners unfamiliar with those domains.
 
-\paragraph{Computational.} Fifth, AATIF v1.0 covers only 4 of 13 MLCommons harm categories strongly (S2, S9, and now S10 after anchor expansion informed by the ADHAR \citep{adhar2024} and SOD \citep{sod2024} hate speech corpora), with 6 categories having zero anchor coverage including critical categories such as Child Sexual Exploitation (S4) and Sexual Content (S12). This reflects the observational origin of the anchor set rather than a design limitation---coverage can be expanded by adding anchors without retraining, but the current system should not be deployed as a standalone safety filter without addressing these gaps. Sixth, while the bge-m3 backend enables cross-lingual semantic matching (raising MultiJail Arabic detection from 32\% under TF-IDF to 74.7\%), misinformation and copyright remain weak (33.3\% and 7.0\% respectively) because the anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching regardless of backend. Seventh, the S~Equation has been calibrated on 31 validation prompts and tested against 15 adversarial cases, which is sufficient for demonstrating the framework's properties but insufficient for claims about production-grade reliability. Larger-scale calibration and adversarial evaluation are needed. Eighth, FanarGuard \citep{fanarguard2025} achieves F1=0.82 on Arabic safety classification using 468K training examples---a data-driven approach that the current anchor-based system cannot match in coverage or scale. AATIF's contributions are structural (interpretability, non-compensability, zero-training extensibility) rather than scale-competitive.
+\paragraph{Computational.} Fifth, AATIF v1.0 covers only 4 of 13 MLCommons harm categories strongly (S2, S9, S10---the latter after anchor expansion informed by the ADHAR \citep{adhar2024} and SOD \citep{sod2024} hate speech corpora---and S11), with 6 categories having zero anchor coverage including critical categories such as Child Sexual Exploitation (S4) and Sexual Content (S12). This reflects the observational origin of the anchor set rather than a design limitation---coverage can be expanded by adding anchors without retraining, but the current system should not be deployed as a standalone safety filter without addressing these gaps. Sixth, while the bge-m3 backend enables cross-lingual semantic matching (raising MultiJail Arabic detection from 32\% under TF-IDF to 74.7\%), misinformation and copyright remain weak (33.3\% and 7.0\% respectively) because the anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching regardless of backend. Seventh, the S~Equation has been calibrated on 31 validation prompts and tested against 15 adversarial cases, which is sufficient for demonstrating the framework's properties but insufficient for claims about production-grade reliability. Larger-scale calibration and adversarial evaluation are needed. Eighth, FanarGuard \citep{fanarguard2025} achieves F1=0.82 on Arabic safety classification using 468K training examples---a data-driven approach that the current anchor-based system cannot match in coverage or scale. AATIF's contributions are structural (interpretability, non-compensability, zero-training extensibility) rather than scale-competitive.
 
 \section{Conclusion}
 
@@ -348,7 +348,7 @@ The central contribution is directional: an inductive process that inverts the s
 
 The S~Equation ($S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]$) demonstrates that governance conjectures derived from observation can be formalised into interpretable, provable mathematical structures. The multiplicative gate ensures non-compensability---a structural property absent from existing classification-based safety systems. Benchmark evaluation against HarmBench and MultiJail with the bge-m3 multilingual embedding backend produced results that confirm the framework's core design properties: 74.3\% safety-category detection on HarmBench (100\% for chemical/biological threats), Arabic outperforming English on MultiJail (74.7\% vs 69.3\%), and verified cross-lingual semantic matching between English inputs and Arabic harm anchors.
 
-The framework is preliminary in important respects. Single-observer derivation limits generalisability; anchor coverage is incomplete (3/13 MLCommons categories strong, 7 uncovered); misinformation and paraphrase-based attacks remain challenging. Future work includes anchor expansion to all 13 MLCommons categories, larger-scale adversarial calibration, and the integration of a cultural alignment axis inspired by FanarGuard's dual-axis design. The full set of 77 field notes is made available as a supplementary document.
+The framework is preliminary in important respects. Single-observer derivation limits generalisability; anchor coverage is incomplete (4/13 MLCommons categories strong, 6 uncovered); misinformation and paraphrase-based attacks remain challenging. Future work includes anchor expansion to all 13 MLCommons categories, larger-scale adversarial calibration, and the integration of a cultural alignment axis inspired by FanarGuard's dual-axis design. The full set of 78 field notes is made available as a supplementary document.
 
 \paragraph{Code and Data.} The AATIF computational engine, test suite (132 tests), benchmark runners, and evaluation harness are available at \url{https://github.com/Abdelmgied-Khenkar/AATIF}. The companion preprint is available at \url{https://doi.org/10.5281/zenodo.20673292}.
 

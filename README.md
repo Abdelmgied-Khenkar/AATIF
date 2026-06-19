@@ -26,10 +26,10 @@ AATIF emerged from a year of iterative human–AI development — theoretical fo
 
 ### The S Equation
 
-The core governance decision is a sigmoid over three weighted channels:
+The core governance decision uses a multiplicative gate: a sigmoid over intent and emotion, multiplied by a harm gate that enforces non-compensability (high harm cannot be offset by benign intent):
 
 ```
-S = σ(w₁·I + w₂·E − w₃·H)
+S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]
 ```
 
 | Symbol | Name | Arabic | Source |
@@ -38,7 +38,9 @@ S = σ(w₁·I + w₂·E − w₃·H)
 | **I** | Intent / purpose | النية | `engine/aatif_intent_scorer.py` |
 | **E** | Emotional load | الشعور | `engine/aatif_emotion_scorer.py` |
 
-Each scorer uses cosine similarity against curated anchor embeddings (numpy dot-product over normalized vectors). The scores are continuous in [0, 1].
+**Parameters:** w₁ = 2.0, w₂ = 1.5, α = 10, θ = 0.55. Hard override: if H > 0.7 → SAFE_FREEZE regardless of intent or emotion.
+
+Each scorer uses cosine similarity against curated anchor embeddings (132 anchors: 58 benign, 74 harm). The scores are continuous in [0, 1].
 
 ### Decision Mapping
 
@@ -99,9 +101,12 @@ AATIF/
 │   └── aatif_conversation_memory.py # Conversation state tracking
 │
 ├── tests/
-│   ├── test_intent_engine.py        # 81 tests: dialect, S equation, hysteresis, Laws
+│   ├── test_intent_engine.py        # 79 tests: dialect, S equation, hysteresis, Laws
 │   ├── test_pipeline.py             # 3 tests: end-to-end pipeline
-│   └── test_safety_gate.py          # 13 tests: CBRN gate (Arabic + English)
+│   ├── test_safety_gate.py          # 12 tests: CBRN gate (Arabic + English)
+│   ├── test_adversarial.py          # 15 adversarial cases (standalone runner, 8 Grok + 7 Claude)
+│   ├── test_dialect_hyperbole.py    # 22 tests: dialect-specific hyperbole detection
+│   └── test_gated_comparison.py     # 16 tests: gated vs additive equation comparison
 │
 ├── eval/
 │   ├── eval_runner.py               # Evaluation harness
@@ -126,7 +131,7 @@ AATIF/
 # Install dependencies
 pip install -r requirements.txt
 
-# Run all tests (97 unit tests + 14 eval scenarios)
+# Run all tests (132 unit tests + 73 subtests + 14 eval scenarios)
 python -m pytest tests/ -v
 
 # Run evaluation harness
@@ -144,6 +149,48 @@ The test suite covers:
 - **Pipeline integration** — end-to-end message → intent → plan_dict
 
 All tests are deterministic (no external model dependency at test time).
+
+```bash
+# Optional: Install Ollama for bge-m3 multilingual embeddings
+# (tests run without it using TF-IDF fallback)
+# See https://ollama.ai for installation
+ollama pull bge-m3
+```
+
+---
+
+## Benchmarks
+
+Evaluated with the bge-m3 multilingual embedding backend (via Ollama).
+
+### HarmBench (236 behaviors, 7 categories)
+
+| Metric | Result |
+|--------|--------|
+| Overall detection | 58.1% (137/236) |
+| Safety-category only | 74.3% (133/179) |
+| Chemical/biological (CBRN) | 100% (28/28) |
+| Cybercrime | 88.4% (38/43) |
+| Illegal activities | 88.4% (38/43) |
+
+### MultiJail (75 prompts, native Arabic translations)
+
+| Language | Detection | Avg H |
+|----------|-----------|-------|
+| Arabic | 74.7% (56/75) | 0.519 |
+| English | 69.3% (52/75) | 0.495 |
+
+Arabic outperforms English — validating the Arabic-first anchor design. Cross-lingual semantic matching confirmed: English inputs match Arabic anchors by meaning via bge-m3.
+
+### MLCommons Coverage (13-category taxonomy)
+
+| Coverage | Categories |
+|----------|------------|
+| **Strong** (4/13) | S2 Non-Violent Crimes, S9 Indiscriminate Weapons, S10 Hate (38+ ADHAR-informed anchors), S11 Suicide & Self-Harm |
+| **Partial** (3/13) | S1 Violent Crimes, S3 Sex-Related Crimes, S5 Defamation |
+| **None** (6/13) | S4, S6, S7, S8, S12, S13 |
+
+Coverage can be expanded by adding anchors — no retraining required.
 
 ---
 
@@ -223,10 +270,11 @@ Co-built with Claude (Anthropic) and GPT (OpenAI).
 ### المعادلة الأساسية
 
 ```
-S = σ(w₁·النية + w₂·الشعور − w₃·حرارة الكلمة)
+S = σ(w₁·النية + w₂·الشعور) · [1 − σ(α(حرارة الكلمة − θ))]
 ```
 
-ثلاث قنوات إدراك تُدمج في قرار واحد:
+بوابة مُضاعَفة: سيغمويد على النية والشعور، مضروبة في بوابة ضرر تمنع التعويض — الضرر العالي لا يُعوَّض بالنية الحسنة. المعاملات: w₁=2.0, w₂=1.5, α=10, θ=0.55. إذا H > 0.7 → تجميد آمن تلقائي.
+
 - **حرارة الكلمة (H)** — قرب الكلام من الأذى
 - **النية (I)** — تصنيف المقصد
 - **الشعور (E)** — الحمل العاطفي
@@ -243,6 +291,6 @@ AATIF مبني على مفهوم **الفطرة** — أن السلوك الأخ
 
 ---
 
-*78 ملاحظة ميدانية · 97+ اختباراً برمجياً · 14 سيناريو تقييم · ورقة بحثية منشورة على Zenodo*
+*78 ملاحظة ميدانية · 132 اختباراً برمجياً · 14 سيناريو تقييم · ورقة بحثية منشورة على Zenodo*
 
 *DOI: [10.5281/zenodo.20673292](https://doi.org/10.5281/zenodo.20673292)*
