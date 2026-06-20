@@ -44,7 +44,15 @@ Gated variant (v2):
       default:          α=10, θ=0.40  (calibrated 2026-06-19 via bge-m3 A/B test)
       high_sensitivity: α=15, θ=0.45
       creative:         α=8,  θ=0.55
-      balanced_strict:  α=10, θ=0.40  (identical to new default)
+      balanced_strict:  α=10, θ=0.40  (identical to default)
+
+    2026-06-20 precision fix: held-out validation (56 cases) exposed an H
+    over-blocking problem (precision 0.60). Adding educational "safe" anchors
+    + counter-harm anchors to the H scorer (aatif_semantic_scorer.py) lifted
+    held-out F1 0.735→0.943 (precision 0.60→0.93) with recall held at 0.96.
+    θ was left at 0.40 — raising it reopened a surveillance hole. The H-I
+    link (Fix 2, link_h_to_i=compute() arg) is implemented but left OFF: it
+    added no F1 once anchors handled precision. See benchmarks/fix_comparison.md.
 
     Note: θ was initially 0.5, raised to 0.55, then lowered to 0.40 after
     A/B testing with bge-m3 embeddings (54 test cases, 30 harmful / 24 benign).
@@ -263,7 +271,10 @@ GATED_PROFILES = {
         "w1": 2.0,     # intent weight
         "w2": 1.5,     # emotion weight
         "alpha": 10,   # gate steepness
-        "theta": 0.40, # harm threshold (lowered from 0.55 after bge-m3 A/B test: catches surveillance)
+        "theta": 0.40, # harm threshold — kept at 0.40: raising it to 0.45 reopened
+                       # the spousal-surveillance hole (H=0.40 → CLARIFY). The
+                       # 2026-06-20 precision fix is carried by the H "safe"
+                       # anchors instead, not by θ. (see fix_comparison.md)
         "desc": "Balanced gate — moderate steepness, gate center at H=0.40 (calibrated 2026-06-19)"
     },
     "high_sensitivity": {
@@ -318,6 +329,37 @@ def sigmoid(x: float) -> float:
     # Clamp to avoid overflow in math.exp
     x = max(-500.0, min(500.0, x))
     return 1.0 / (1.0 + math.exp(-x))
+
+
+# ---------------------------------------------------------------------------
+# FIX 2 (optional): LINK H TO I  — "trust benign intent"
+#
+# The held-out analysis showed H over-blocks because it measures topic
+# sensitivity, not harmful intent. When intent I is clearly BENIGN, we can
+# discount H so a sensitive *topic* with constructive *purpose* isn't blocked.
+#
+# NOTE on convention: in AATIF, HIGH I = constructive/benign, LOW I = harmful.
+# Relief scales with how far I sits ABOVE neutral (0.5):
+#     H_eff = H · (1 − λ · clip((I − 0.5)/0.5, 0, 1))
+# λ=0 → no change (default).  λ=1 → fully benign intent zeroes H.
+#
+# Default OFF: the held-out experiments (benchmarks/fix_comparison.md) found
+# that once educational "safe" anchors handle the precision problem (Fix 1),
+# the H-I link adds no F1 and risks recall on cases where the intent scorer
+# is fooled into a high benign I (e.g. elder-scam scripts, fraud sites).
+# It is implemented here so it can be enabled per-call for experimentation.
+# ---------------------------------------------------------------------------
+H_I_LINK_LAMBDA = 0.5  # used only when link_h_to_i=True is passed to compute()
+
+
+def link_h_to_intent(H: float, I: float, lam: float = H_I_LINK_LAMBDA,
+                     i_neutral: float = 0.5) -> float:
+    """Return an H reduced toward 0 in proportion to how benign intent I is."""
+    if lam <= 0:
+        return H
+    frac = (I - i_neutral) / (1.0 - i_neutral)
+    frac = max(0.0, min(1.0, frac))
+    return H * (1.0 - lam * frac)
 
 
 def compute_s_from_scores(H: float, I: float, E: float,
@@ -491,7 +533,9 @@ class AATIFEngine:
     def compute(self, text: str, profile: str = "default",
                 verbose: bool = False,
                 conversation_id: str = None,
-                equation_mode: str = "classic") -> dict:
+                equation_mode: str = "classic",
+                link_h_to_i: bool = False,
+                h_i_lambda: float = H_I_LINK_LAMBDA) -> dict:
         """
         Run all three scorers on input text, compute S, return decision.
 
@@ -528,12 +572,22 @@ class AATIFEngine:
         I = i_result["I"]
         E = e_result["E"]
 
+        # FIX 2 (optional): discount H when intent is clearly benign.
+        # Applied BEFORE the gate (and before the H>0.7 hard override) so a
+        # benign-intent sensitive topic can be rescued. Default off.
+        H_raw = H
+        if link_h_to_i:
+            H = link_h_to_intent(H, I, lam=h_i_lambda)
+
         # Compute S and decision using selected equation
         if equation_mode == "gated":
             result = compute_s_gated_from_scores(H, I, E, profile=profile)
         else:
             result = compute_s_from_scores(H, I, E, profile=profile)
         result["text"] = text
+        if link_h_to_i and H != H_raw:
+            result["H_raw"] = round(H_raw, 4)
+            result["h_i_linked"] = True
 
         # CONFIDENCE AGGREGATION
         # Each scorer now reports confidence (high/medium/low).

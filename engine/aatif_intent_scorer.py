@@ -138,7 +138,18 @@ class _OllamaBackend:
 
     def sim(self, text):
         q = self._embed([text])[0]
-        sims = self.emb @ q
+        # Defensive: clean and unit-normalize the QUERY vector BEFORE the
+        # dot product (same pattern as __init__/_embed for anchors), so a
+        # genuinely bad embedding (inf/NaN/zero norm) can't poison the result.
+        # Without this, a zero-norm query embedding produced "divide by zero"
+        # and "overflow in matmul" RuntimeWarnings here and could corrupt I.
+        q = np.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0)
+        qn = np.linalg.norm(q)
+        if qn != 0:
+            q = q / qn
+        # Suppress spurious BLAS matmul FPU flags (result is still finite).
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            sims = self.emb @ q
         return np.nan_to_num(sims, nan=0.0, posinf=0.0, neginf=0.0)
 
 

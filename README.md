@@ -40,7 +40,7 @@ S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]
 
 **Parameters:** w₁ = 2.0, w₂ = 1.5, α = 10, θ = 0.40 (calibrated via bge-m3 A/B test, 2026-06-19). Hard override: if H > 0.7 → SAFE_FREEZE regardless of intent or emotion.
 
-The H scorer uses 132 curated anchors (benign + harm), the I scorer uses 44 intent anchors, and the E scorer uses 32 emotion anchors. All scores are continuous in [0, 1] via cosine similarity against anchor embeddings.
+The H scorer uses 169 curated anchors (benign + harm, including educational "safe" and counter-harm anchors added in the 2026-06-20 precision fix), the I scorer uses 44 intent anchors, and the E scorer uses 32 emotion anchors. All scores are continuous in [0, 1] via cosine similarity against anchor embeddings.
 
 ### Decision Mapping
 

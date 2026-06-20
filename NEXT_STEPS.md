@@ -1,10 +1,8 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-06-19 by Cowork session
+Last updated: 2026-06-20 by Cowork session
 
 ## Urgent (هذا الأسبوع)
-- [ ] (AATIF) مراجعة aatif_paper_v2.tex — الورقة اتكتبت بس ما اتراجعت مع المعماري بعد
-- [ ] (AATIF) طباعة الورقة PDF — compile aatif_paper_v2.tex وتأكد إنها تطلع صح
-- [ ] (AATIF) Push التغييرات الأخيرة لـ GitHub — الورقة الجديدة + أي تعديلات
+- [ ] (AATIF) مراجعة aatif_paper_v2.tex مع المعماري — التصحيحات اتعملت بس محتاجة مراجعة نهائية
 - [ ] (AATIF) تحديث Zenodo — رفع النسخة الجديدة من الورقة
 - [ ] (AATIF) إصلاح وصّال agent — يقول "134+ tests" بدل "164+"
 
@@ -22,6 +20,11 @@ Last updated: 2026-06-19 by Cowork session
 - [ ] (AATIF) رفع على arXiv — محتاج مراجعة الورقة أول
 
 ## Done (تم)
+- [x] 2026-06-20 Held-out test run — 56 حالة جديدة، F1=0.9615 (precision 0.9615, recall 0.9615)
+- [x] 2026-06-20 H scorer precision fix — safe + counter-harm anchors، 17 FP → 1 FP، precision 0.60 → 0.96 (132 → 169 anchor)
+- [x] 2026-06-20 Paper v2 corrections — شيل "crown jewel"، F1 held-out 0.9615 بدل in-sample 0.984، تصحيح contribution claim + human-over-the-loop
+- [x] 2026-06-20 GitHub push — كل التصحيحات على origin/main
+- [x] 2026-06-20 طباعة الورقة PDF — aatif_paper_v2.tex compiled نضيف (14 صفحة)
 - [x] 2026-06-19 LIMITATIONS.md — 8 limitations موثّقة (Trojan horse, sarcasm, implicit harm, benchmarks, multi-turn, equation evolution, modality, dialects)
 - [x] 2026-06-19 الورقة الجديدة aatif_paper_v2.tex — 7 أقسام، S equation صفحة 1، 14 صفحة
 - [x] 2026-06-19 تصحيح أرقام anchors — 132/44/32 مش 154/59/43

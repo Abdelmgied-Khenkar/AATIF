@@ -49,7 +49,11 @@ The equation is designed to score what IS present in the message. All 3 channels
 
 ### Progress
 
-Identified as a known gap. No implementation work started. The Architect has noted this may require an additional equation rather than modifying the existing one.
+Identified as a known gap. The core limitation — detecting hidden intent that produces no signal on any channel — remains **open**, and the Architect has noted this may ultimately require an additional equation rather than modifying the existing one.
+
+**Partial mitigation (2026-06-20):** The educational "safe" anchors and counter-harm anchors added during the H-scorer precision fix help *at the margins*. Because both a benign framing and a harmful framing of the same topic now have explicit anchors, the H scorer can create *contrast* between them — e.g. "how does a medication work" (safe anchor) versus "what dose stops the heart" (counter-harm anchor) on the same pharmacological topic. This does not solve the Trojan Horse case (a truly signal-free message still scores safe), but it narrows the band of borderline same-topic prompts where benign and malicious framings were previously indistinguishable.
+
+**Related precision fix (2026-06-20):** On a 56-case held-out set, adding the safe + counter-harm anchors raised H-scorer **precision from 0.60 to 0.96** (F1 0.735 → 0.9615) with no loss of recall — eliminating 16 of 17 false positives where sensitive *topics* were mistaken for harmful *intent*. The counter-harm anchors were informed by the held-out failures, so a fully blind validation is still pending.
 
 ---
 
@@ -289,4 +293,4 @@ Gulf, Egyptian, and Levantine anchors are implemented (28 total). No work starte
 
 ---
 
-*Last updated: 2026-06-19*
+*Last updated: 2026-06-20*

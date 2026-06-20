@@ -29,6 +29,9 @@ Thumbs.db
 *.log
 *.bak
 *.bak.*
+*.orig
+*.baseline
+.backup_fixes/
 conversation_log.csv
 
 # LaTeX build artifacts
