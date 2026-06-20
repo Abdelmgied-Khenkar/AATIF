@@ -6,7 +6,7 @@
 
 [![Tests](https://github.com/Abdelmgied-Khenkar/AATIF/actions/workflows/tests.yml/badge.svg)](https://github.com/Abdelmgied-Khenkar/AATIF/actions/workflows/tests.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20673292.svg)](https://doi.org/10.5281/zenodo.20673292)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
 
 ---
 
@@ -86,7 +86,7 @@ The safety gate (Law Ω) is mode-independent by design.
 ```
 AATIF/
 ├── README.md
-├── LICENSE                          # Apache License 2.0
+├── LICENSE                          # Business Source License 1.1
 ├── requirements.txt                 # Python dependencies
 │
 ├── engine/                          # Core governance engine
@@ -247,9 +247,9 @@ AATIF is the mass. The S equation is how that mass produces measurable curvature
 
 ## License
 
-This project is licensed under the **Apache License 2.0** — see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **Business Source License 1.1 (BSL 1.1)** — see the [LICENSE](LICENSE) file for details.
 
-AATIF is freely available for academic research, education, and non-commercial use. Commercial use requires a separate agreement with the author. Contact: abdulmjeed.ibrahem@gmail.com
+AATIF is freely available for non-commercial purposes — including academic research, education, personal projects, and evaluation — provided you give appropriate credit to the author. Any commercial use (incorporating AATIF into a product or service for sale, providing commercial services with it, or deploying it in a revenue-generating system) requires a separate commercial license. On the **Change Date (June 20, 2030)**, the license converts automatically to the **Apache License 2.0**. Contact: abdulmjeed.ibrahem@gmail.com
 
 ---
 

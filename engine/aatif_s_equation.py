@@ -281,8 +281,14 @@ GATED_PROFILES = {
         "w1": 2.0,
         "w2": 1.0,
         "alpha": 15,   # steeper gate → narrower transition zone
-        "theta": 0.45, # lower threshold → catches harm earlier
-        "desc": "Conservative gate — triggers earlier, sharper cutoff"
+        "theta": 0.30, # gate center BELOW default (0.40) so it closes earlier =
+                       # catches harm sooner. Fixed 2026-06-20: was 0.45, which
+                       # sat ABOVE default and made the "high sensitivity" gate
+                       # MORE permissive than default across H∈[0.20,0.50] — a
+                       # logic inversion contradicting the profile's purpose,
+                       # its own comment, and the v9.7 spec (θ=0.30). Gate
+                       # ordering now: high_sensitivity ≤ default ≤ creative.
+        "desc": "Conservative gate — triggers earlier (θ=0.30), sharper cutoff"
     },
     "creative": {
         "w1": 3.0,

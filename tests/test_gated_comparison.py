@@ -226,6 +226,30 @@ class TestGatedEquationProperties(unittest.TestCase):
         self.assertIn(r_df["decision"], ("SAFE_STOP", "SAFE_FREEZE"),
             f"default should catch surveillance at θ=0.40, got {r_df['decision']}")
 
+    def test_gate_strictness_ordering(self):
+        """Regression (2026-06-20): the harm gate must get MORE permissive as we
+        move from high_sensitivity → default → creative, at EVERY harm level.
+
+        gate(H) = 1 − σ(α(H − θ)); higher gate = more open = more permissive.
+        A larger θ shifts the gate to close later, so for the ordering to hold,
+        high_sensitivity must have the lowest θ. This locks the bug where
+        high_sensitivity used θ=0.45 (> default 0.40) and was the LEAST strict
+        gate across the harm transition zone — the opposite of its purpose."""
+        # gate depends only on H (and α, θ); I, E are fixed and irrelevant here
+        for H in [0.20, 0.30, 0.35, 0.40, 0.45, 0.50, 0.60, 0.70]:
+            g_hs = compute_s_gated_from_scores(H, 0.5, 0.5,
+                                               profile="high_sensitivity")["gate"]
+            g_df = compute_s_gated_from_scores(H, 0.5, 0.5,
+                                               profile="default")["gate"]
+            g_cr = compute_s_gated_from_scores(H, 0.5, 0.5,
+                                               profile="creative")["gate"]
+            self.assertLessEqual(g_hs, g_df + 1e-9,
+                f"H={H}: high_sensitivity gate {g_hs:.4f} must be <= default "
+                f"gate {g_df:.4f} (high_sensitivity must be the STRICTER gate)")
+            self.assertLessEqual(g_df, g_cr + 1e-9,
+                f"H={H}: default gate {g_df:.4f} must be <= creative gate "
+                f"{g_cr:.4f} (creative is the most permissive gate)")
+
 
 class TestClassicEquationUnchanged(unittest.TestCase):
     """Verify the classic equation still produces the same results."""
