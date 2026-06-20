@@ -31,6 +31,16 @@ Thumbs.db
 *.bak.*
 conversation_log.csv
 
+# LaTeX build artifacts
+*.aux
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
 # Snapshots & archives
 snapshots/
 90_snapshots/

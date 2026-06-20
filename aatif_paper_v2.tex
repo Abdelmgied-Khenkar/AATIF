@@ -1,0 +1,586 @@
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{natbib}
+\usepackage[margin=1in]{geometry}
+\usepackage{enumitem}
+\usepackage{multirow}
+
+% Arabic examples are romanized for pdflatex portability.
+% For proper Arabic rendering, compile with XeLaTeX and
+% add: \usepackage{polyglossia} \setotherlanguage{arabic}
+%      \newfontfamily\arabicfont[Script=Arabic]{Amiri}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\title{AATIF: A Multiplicative Governance Equation\\for Arabic-First LLM Safety}
+
+\author{Abdulmjeed Ibrahim Khenkar\\
+\textit{Independent Researcher}\\
+\texttt{abdulmjeed.ibrahem@gmail.com}}
+
+\date{June 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present AATIF, a mathematical governance framework for large language model safety that provides an explicit, interpretable safety equation with provable non-compensability. The core governance function $S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]$ fuses three independent perception channels---semantic harm proximity ($H$), intent classification ($I$), and emotional load ($E$)---through a multiplicative gate structure that prevents benign intent from compensating for detected harm. Unlike trained classifiers, AATIF requires zero training data, operating through 132 curated semantic anchors for harm detection with cosine similarity scoring via multilingual embeddings (bge-m3). The framework treats Arabic as a first-class semantic input, with 28 dialect-hyperbole disambiguation anchors to prevent figurative speech from triggering false harm signals. Evaluated against HarmBench (236 behaviors) and MultiJail (75 prompts), AATIF achieves 74.3\% safety-category detection with 100\% on chemical/biological threats, and Arabic outperforms English on identical harmful prompts (74.7\% vs 69.3\%), validating the Arabic-first design. The system includes hysteresis control for decision stability, unconditional CBRN safety gates, and four tunable mode profiles calibrated via A/B testing ($F_1 = 0.984$ on 54 validation cases). A test suite of 164 deterministic tests ensures mathematical correctness. AATIF is the first LLM safety system to provide an explicit governance equation with formally verified non-compensability, Arabic dialect awareness, and zero-training extensibility through anchor curation alone.
+\end{abstract}
+
+\noindent\textbf{Keywords:} LLM safety, governance equation, Arabic NLP, multiplicative gating, non-compensability, semantic anchors
+
+% ════════════════════════════════════════════════════════════════
+\section{Introduction}
+\label{sec:intro}
+% ════════════════════════════════════════════════════════════════
+
+Large language model (LLM) safety systems share three structural limitations that persist across both commercial platforms and academic proposals.
+
+\paragraph{Gap 1: No interpretable equation.}
+No deployed safety system provides an explicit, interpretable mathematical governance formula with provable properties. FanarGuard \citep{fanarguard2025} is a 2B-parameter classifier trained on 468K prompt-response pairs; Llama Guard~3 \citep{llamaguard2024} is a fine-tuned language model performing binary classification; Google's Perspective API \citep{perspective2017} returns per-attribute toxicity scores from a neural classifier. All three produce scores, but none exposes a closed-form equation that a reviewer can inspect, verify, or prove properties about. The gap is not one of performance but of \emph{interpretability}: when a safety system refuses a request, why?
+
+\paragraph{Gap 2: No non-compensability guarantee.}
+Existing aggregation methods---typically additive or mean-based---allow benign signals in one channel to compensate for harm detected in another. A prompt expressing harmful intent in calm, polite language can score as ``moderate risk'' under additive aggregation, because the low emotional-load score partially offsets the high harm score. This \emph{toxic positivity} attack vector is a structural property of additive scoring, not an implementation bug.
+
+\paragraph{Gap 3: Arabic as afterthought.}
+Arabic dialect awareness is either absent or retrofitted onto English-first architectures. Arabic colloquial speech routinely uses violent metaphors for everyday emotions---\emph{wall\=ahi ba-dhba\d{h}uh} (``I swear I'll slaughter him'') means \emph{I'm annoyed at him}---and English-first embedding spaces collapse these figurative expressions into their literal semantic neighborhoods, producing systematic false positives. No existing system treats Arabic dialectal hyperbole as a first-class safety concern.
+
+\bigskip
+
+This paper presents AATIF (Architected Adaptive Thoughts \& Intelligence Frameworks), a governance framework that addresses all three gaps with a single mathematical structure. The core contribution is the \emph{S~equation}:
+
+\begin{equation}
+S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]
+\label{eq:s_intro}
+\end{equation}
+
+\noindent where $H$ is semantic harm proximity, $I$ is intent classification, $E$ is emotional load, $\sigma$ is the logistic sigmoid, and $\theta$ is the harm threshold. The multiplicative structure ensures \emph{non-compensability}: when $H$ exceeds $\theta$, the harm gate drives $S$ toward zero regardless of how benign the intent or calm the emotional state. A hard override ($H > 0.7 \Rightarrow$ \textsc{safe\_freeze}) provides an absolute safety floor independent of parameter calibration.
+
+AATIF originated from 73 governance conjectures derived through a year of sustained observation across four LLM platforms (ChatGPT, Claude, Gemini, DeepSeek), documented in 78 field notes available as supplementary material. This paper operationalizes one of those conjectures---Conjecture~\#063, that governance operates through probabilistic constraint density rather than rule retrieval---into a computational engine with an explicit mathematical formulation, a comprehensive test suite of 164 deterministic tests, and benchmark evaluation against HarmBench and MultiJail.
+
+The remainder of this paper is structured as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:equation} presents the S~equation, its three scorers, the hysteresis controller, safety gates, and mode profiles. Section~\ref{sec:arabic} describes the Arabic-first design. Section~\ref{sec:experiments} reports experimental evaluation. Section~\ref{sec:discussion} discusses contributions and limitations. Section~\ref{sec:conclusion} concludes.
+
+
+% ════════════════════════════════════════════════════════════════
+\section{Related Work}
+\label{sec:related}
+% ════════════════════════════════════════════════════════════════
+
+\subsection{Alignment Approaches}
+
+The dominant paradigm in LLM alignment treats governance as top-down principle application. \citet{christiano2017} established reinforcement learning from human feedback (RLHF), learning reward functions from pairwise preference comparisons. \citet{ouyang2022} applied this at scale in InstructGPT, demonstrating that preference-based fine-tuning shifts model outputs toward human-annotated intent. \citet{bai2022} proposed Constitutional AI, in which natural-language principles guide self-critique and revision. In all three approaches, governance principles precede observation: the direction of derivation runs from principle to model.
+
+A parallel body of work has examined how alignment operates internally. \citet{arditi2024} demonstrated that refusal behavior across thirteen chat models is mediated by a single linear direction in activation space, rather than by distributed rule-following mechanisms. \citet{lee2024} showed that direct preference optimization (DPO) does not eliminate harmful capabilities but learns to route around them, with the original capacity remaining recoverable. \citet{wolf2024} formalized this fragility through Behavior Expectation Bounds, proving that any alignment process that attenuates rather than removes a behavior remains susceptible to adversarial elicitation. Taken together, these findings suggest that alignment functions as probabilistic constraint density on output distributions rather than as explicit rule retrieval---a characterization that motivates AATIF's mathematical approach to governance.
+
+\subsection{Arabic-Aware AI Safety}
+
+FanarGuard \citep{fanarguard2025} is the most directly relevant system: a bilingual Arabic-English content moderation classifier developed by the Qatar Center for Artificial Intelligence, trained on 468K prompt-response pairs and fine-tuned into a 2B-parameter model achieving $F_1 = 0.82$ on Arabic safety classification. FanarGuard introduces a dual-axis evaluation---safety (harmful$\to$harmless) and cultural alignment (aligned$\to$unaligned)---representing an important advance in culturally-aware moderation. Llama Guard~3 \citep{llamaguard2024} extends Meta's safety classifier to eight languages including Arabic, applying the MLCommons 13-category taxonomy through binary classification. Google's Perspective API \citep{perspective2017} provides per-attribute toxicity scores with Arabic language support. Each of these systems operates as a trained classifier or fine-tuned language model; none provides an explicit, interpretable governance equation.
+
+In Arabic hate speech detection, ADHAR \citep{adhar2024} is a multi-dialectal corpus covering five Arabic variants (Egyptian, Levantine, Gulf, Maghrebi, MSA) with inter-annotator agreement $\kappa = 0.95$; cross-dialect experiments show accuracy dropping from 0.84 to 0.64 when training on one dialect and testing on another, empirically demonstrating that dialect-awareness is not optional for Arabic safety systems. SOD \citep{sod2024} contributes a Saudi-specific offensive language corpus of 24K+ tweets with hierarchical annotation, achieving $F_1 = 0.87$ with AraBERT. Both datasets informed AATIF's anchor expansion for dialectal coverage.
+
+AATIF differs from these systems in three structural respects: (1)~it provides an explicit mathematical equation with provable properties rather than learned classifier weights, (2)~its multiplicative gate prevents intent from compensating for harm---a non-compensability guarantee that additive aggregation cannot provide, and (3)~it requires zero training data, operating through curated semantic anchors. These differences position AATIF as complementary to data-driven classifiers rather than competitive with them.
+
+\subsection{Safety Benchmarks}
+
+Two benchmark suites are relevant to evaluating AATIF. HarmBench \citep{harmbench2024} provides 236 harmful behaviors across seven semantic categories (chemical/biological, cybercrime, illegal activities, harassment, harmful content, misinformation, copyright). HarmBench is English-only, creating a language mismatch with AATIF's Arabic-first anchor design that tests cross-lingual transfer. MultiJail \citep{multijail2024} addresses the multilingual gap with 75 harmful prompts translated by native speakers into 10 languages including Arabic, enabling direct comparison of detection performance across languages. The MLCommons AI Safety taxonomy \citep{mlcommons2024} provides a standardized 13-category harm classification (S1--S13) serving as a common reference for coverage comparison.
+
+
+% ════════════════════════════════════════════════════════════════
+\section{The AATIF Governance Equation}
+\label{sec:equation}
+% ════════════════════════════════════════════════════════════════
+
+\subsection{Definition and Properties}
+
+The AATIF governance engine computes a composite safety score $S \in [0,1]$ from three independent perceptual channels:
+
+\begin{equation}
+S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot \underbrace{[1 - \sigma(\alpha(H - \theta))]}_{\text{harm gate}}
+\label{eq:s_equation}
+\end{equation}
+
+\noindent The equation consists of two factors whose product determines the governance decision.
+
+\paragraph{Quality term.} $\sigma(w_1 \cdot I + w_2 \cdot E) \in (0,1)$ assesses how clear and benign the request is. Intent classification $I$ captures whether the request exhibits harmful planning signals (higher $I$ = more benign); emotional load $E$ captures whether the user's language exhibits distress or escalation markers (higher $E$ = calmer state). Parameters $w_1 = 2.0$ and $w_2 = 1.5$ weight intent more heavily than emotion, reflecting the design judgment that \emph{what} the user wants matters more than \emph{how} they feel when asking.
+
+\paragraph{Harm gate.} $[1 - \sigma(\alpha(H - \theta))] \in (0,1)$ is a soft gate controlled by semantic harm proximity $H$. The steepness parameter $\alpha = 10$ controls transition sharpness; the threshold $\theta = 0.40$ sets the harm level at which the gate begins to close. When $H \ll \theta$, the gate is fully open ($\approx 1$); when $H \gg \theta$, the gate closes ($\approx 0$), driving $S$ toward zero.
+
+\paragraph{Non-compensability.} The \emph{product} of these two factors is the critical design choice. Because $S$ is the product of two terms each bounded in $(0,1)$, high harm closes the gate regardless of how benign the intent or calm the emotional state. There exists no combination of $I$ and $E$ values that can force $S$ above the \textsc{execute} threshold when $H > \theta$. Additive aggregation ($S = aH + bI + cE$) lacks this property: sufficiently high $I$ and $E$ can always compensate for moderate $H$.
+
+\paragraph{Sigmoid symmetry.} The harm gate satisfies $[1 - \sigma(\alpha(H - \theta))] = \sigma(\alpha(\theta - H))$, verified formally. This symmetry ensures the gate is centered exactly at $\theta$ and monotonically decreasing in $H$.
+
+\paragraph{Hard override.} When $H > 0.7$, the system triggers \textsc{safe\_freeze} regardless of $S$, providing an absolute safety floor independent of parameter calibration. This override is not derived from the equation but imposed externally, ensuring that no parameter tuning can disable the safety floor.
+
+\paragraph{Decision mapping.} The continuous score $S$ maps to four discrete actions:
+
+\begin{table}[h]
+\centering
+\caption{Decision mapping from $S$ score to governance action.}
+\label{tab:decisions}
+\begin{tabular}{lll}
+\toprule
+Condition & Action & Behavior \\
+\midrule
+$S \geq 0.7$ & \textsc{execute} & Process request normally \\
+$0.4 \leq S < 0.7$ & \textsc{clarify} & Request clarification before proceeding \\
+$S < 0.4$ & \textsc{safe\_stop} & Decline with explanation \\
+$H > 0.7$ & \textsc{safe\_freeze} & Unconditional refusal (hard override) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Follow-up signal.} A follow-up signal $F$ provides a harm-floor guarantee: even when $S$ is high, $F$ flags residual risk for downstream monitoring, ensuring that borderline cases receive continued attention.
+
+
+\subsection{The Three Scorers}
+
+Each scorer operates independently, producing a continuous score in $[0,1]$ through cosine similarity against curated semantic anchors using multilingual embeddings (bge-m3 via Ollama). A TF-IDF character n-gram fallback is available for offline operation without GPU.
+
+\paragraph{H scorer---Semantic Harm Proximity (\emph{har\=arat al-kalima}).} The H scorer maintains 132 curated anchors spanning violence, weapons, self-harm, cybercrime, hate speech, and chemical/biological categories. Each anchor is a short phrase representing a harm concept. Input text is embedded via bge-m3 and compared against all anchors via cosine similarity. \emph{Top-$K$ aggregation} ($K=3$) averages the three highest-similarity scores, preventing any single anchor from dominating the result. This mitigates the \emph{anchor contamination} effect, in which one high-similarity anchor inflates the score despite low agreement across the anchor set. The H scorer includes 28 dialect-specific hyperbole anchors scored at $H \leq 0.05$, providing semantic ``counter-gravity'' for figurative Arabic expressions (Section~\ref{sec:arabic}).
+
+\paragraph{I scorer---Intent Classification (\emph{al-niyya}).} The I scorer maintains 44 intent anchors organized into categories: informational, transactional, navigational, creative, and harmful-planning. Input is classified via top-$K$ softmax over anchor similarities, with an out-of-distribution (OOD) guard that flags inputs dissimilar to all intent categories. Confidence bands map similarity scores to discrete confidence levels.
+
+\paragraph{E scorer---Emotional Load (\emph{al-shu`\=ur}).} The E scorer maintains 32 emotion anchors covering distress, escalation, calmness, and neutral states. Higher $E$ indicates calmer emotional state; distress and escalation indicators produce lower $E$ scores, which reduce $S$ and may shift the decision toward \textsc{clarify}. The E scorer partially implements a \emph{textual spectrogram}---a reconstruction of emotional information from textual features when prosodic cues are absent (Section~\ref{sec:maqam}).
+
+All three scorers are deterministic at test time: given the same input and anchor set, they produce identical scores across runs.
+
+
+\subsection{Hysteresis Controller}
+
+When $S$ hovers near a decision boundary, the system can produce unstable decision sequences---oscillating between \textsc{execute} and \textsc{clarify} on successive evaluations of similar inputs. The hysteresis controller addresses this by introducing entry/exit threshold offsets: transitioning from \textsc{execute} to \textsc{clarify} requires $S$ to fall below the boundary by offset $\varepsilon$, while returning to \textsc{execute} requires $S$ to rise above it by the same margin. This is the ``AC thermostat'' principle: a heating system that turns on at 68\textdegree{}F and off at 72\textdegree{}F is more stable than one that toggles at exactly 70\textdegree{}F. The controller maintains per-session state, ensuring independent hysteresis tracking across concurrent user conversations.
+
+
+\subsection{Safety Gates: Law $\Omega$ and Law $\Xi$}
+
+Two unconditional safety gates fire \emph{before} the S equation is evaluated, providing defense-in-depth independent of the scoring mechanism.
+
+\paragraph{Law $\Omega$ (CBRN Gate).} Unconditional detection of chemical, biological, radiological, and nuclear (CBRN) content in both Arabic and English. When triggered, the system enters \textsc{safe\_freeze} regardless of all other scores. This gate is mode-independent: it fires identically across all four mode profiles.
+
+\paragraph{Law $\Xi$ (Override Lock).} Detection of jailbreak and override attempts---phrases such as ``ignore all previous instructions'' or \emph{taj\=awuz al-ta`l\={\i}m\=at} (``override instructions''). When triggered, the system enters \textsc{safe\_freeze}. The override lock is designed to be non-bypassable: no prompt construction can deactivate it from within the input channel.
+
+Both gates operate on pattern matching against curated trigger lists and are independent of the embedding backend, ensuring they function even in TF-IDF fallback mode.
+
+
+\subsection{Mode Profiles}
+
+AATIF supports four parameter profiles that adjust the sensitivity of the S equation without changing its structure:
+
+\begin{table}[h]
+\centering
+\caption{Mode profiles with parameter settings and use cases.}
+\label{tab:profiles}
+\begin{tabular}{lccl}
+\toprule
+Profile & $\alpha$ & $\theta$ & Use case \\
+\midrule
+\texttt{high\_sensitivity} & 12 & 0.30 & High-risk domains (medical, legal) \\
+\texttt{default} & 10 & 0.40 & Standard operation \\
+\texttt{creative} & 8 & 0.50 & Creative writing, fiction \\
+\texttt{casual} & 6 & 0.55 & Informal conversation \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Lower $\theta$ makes the harm gate more sensitive (closes earlier); higher $\alpha$ makes the transition sharper (less ambiguous region). The \texttt{high\_sensitivity} profile catches harm at lower similarity scores with a sharper cutoff; the \texttt{casual} profile tolerates higher similarity before triggering, with a gentler transition. Crucially, the hard override ($H > 0.7$) and safety gates (Laws $\Omega$, $\Xi$) are mode-independent---they fire at full sensitivity regardless of profile selection.
+
+
+\subsection{Ambiguity Pre-Check and Jailbreak Detection}
+
+\paragraph{Ambiguity detection.} Short or vague prompts trigger an override from \textsc{execute} to \textsc{clarify}, preventing the system from processing ambiguous requests that could be interpreted as either benign or harmful. This operationalizes the design principle that the cheapest correct response to an ambiguous input is a clarifying question, not a speculative completion.
+
+\paragraph{Bidirectional jailbreak handler.} The jailbreak handler operates in both directions: it \emph{escalates} decisions when jailbreak markers are detected (role-play framing, instruction-override language, system-prompt extraction attempts), and it can \emph{downgrade} a \textsc{safe\_freeze} to \textsc{safe\_stop} when no jailbreak markers are present but simple harm content is detected. This bidirectional design reflects the principle that simple harm (a genuine safety question from a concerned user) is not manipulation and should receive an empathetic explanation rather than unconditional refusal.
+
+
+% ════════════════════════════════════════════════════════════════
+\section{Arabic-First Design}
+\label{sec:arabic}
+% ════════════════════════════════════════════════════════════════
+
+\subsection{The Meaning Density Hypothesis (\texorpdfstring{\emph{kath\=afat al-ma`n\=a}}{kathafat al-ma'na})}
+\label{sec:density}
+
+We hypothesize that \emph{meaning density}---the number of semantic dimensions encodable per token---is the relevant variable for selecting a base representation language for a safety system. Arabic was chosen not from cultural preference but from measurable information-theoretic properties that make it the strongest known candidate among major world languages.
+
+Arabic's root-pattern morphology provides transparent semantic compression. The trilateral root \emph{k-t-b} (``writing'') generates \emph{kit\=ab} (book), \emph{k\=atib} (writer), \emph{maktaba} (library), \emph{makt\=ub} (written letter)---a single root encoding semantic relationships that English requires unrelated lexemes to express. Classical Arabic lexicography documents over 700 names for the lion, each encoding a distinct behavioral dimension (resting, roaring, hunting, stalking)---not synonyms but distinct semantic coordinates in a high-dimensional space. Figurative density compounds this: \emph{wall\=ahi ba-dhba\d{h}uh} (``I swear I'll slaughter him'') packs intent, emotion, cultural context, and literal meaning into two words.
+
+This density has a concrete consequence for safety systems. English-first embedding models project Arabic text into a semantic space whose geometry was built for English lexical distinctions. This projection systematically collapses the high-dimensional Arabic semantic space: the 700 lion-names collapse to a single cluster near ``lion''; figurative and literal violence collapse into the same neighborhood. The result is information loss at precisely the semantic boundaries where safety decisions are most critical.
+
+AATIF's curated anchors are a workaround for this projection loss: Arabic-language anchors provide reference points in the embedding regions where English-first geometry is coarsest. The principled solution---an Arabic-first embedding model trained to preserve Arabic semantic distinctions---is future work. We note that the meaning density hypothesis is not exclusive to Arabic: other Semitic languages (Hebrew, Amharic) share root-pattern morphology and would exhibit analogous properties \citep{wolff2011,slobin1996}. Our MultiJail results (Arabic 74.7\% vs English 69.3\%) provide circumstantial evidence consistent with this hypothesis, though testing it directly requires building an Arabic-first embedding model.
+
+
+\subsection{Dialect Hyperbole Disambiguation}
+\label{sec:hyperbole}
+
+Arabic colloquial speech uses violent metaphors for everyday emotions with a frequency that poses a unique challenge for safety systems. Table~\ref{tab:hyperbole} illustrates representative examples across Gulf, Levantine, and Egyptian dialects.
+
+\begin{table}[h]
+\centering
+\caption{Arabic dialect hyperbole: literal meaning vs.\ actual meaning.}
+\label{tab:hyperbole}
+\begin{tabular}{p{3.2cm}ll}
+\toprule
+Expression & Literal meaning & Actual meaning \\
+\midrule
+\emph{yij\={\i}b lahum jal\d{t}a} & Give them a stroke & Annoy them greatly \\
+\emph{wall\=ahi ba-dhba\d{h}uh} & I'll slaughter him & I'm annoyed at him \\
+\emph{qunbula `ala al-s\=oshy\=al m\={\i}dy\=a} & A bomb on social media & A viral hit \\
+\emph{bam\=ut f\={\i}k} & I'm dying in you & I love you deeply \\
+\emph{yaqtuln\={\i} min al-\d{d}a\d{h}k} & He's killing me & He's hilarious \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A safety system without dialect awareness would flag all five expressions as harmful: ``slaughter,'' ``bomb,'' ``dying,'' ``killing'' all appear in violence-related anchor neighborhoods. The H scorer addresses this through 28 dialect-hyperbole anchors, each scored at $H \leq 0.05$. These anchors act as semantic counter-gravity: when an input matches a hyperbole anchor more closely than a harm anchor, the figurative interpretation dominates and the harm score remains low. This mechanism exploits the top-$K$ aggregation design---if one of the top-3 nearest anchors is a hyperbole anchor, it dilutes the average toward safety.
+
+We call the underlying failure mode \emph{Lexical Anchor Contamination}: English-first embeddings cannot reliably separate Arabic figurative violence from literal violence because the embedding geometry was not built to encode this distinction. The cross-dialect accuracy drop documented by \citet{adhar2024} (0.84 to 0.64) confirms that dialect-sensitivity is not optional.
+
+The dialect test suite contains 22 test cases covering Gulf, Levantine, and Egyptian dialectal expressions. All 22 pass with zero false positives: no hyperbolic expression triggers harm detection.
+
+
+\subsection{The Maqam-to-Safety Origin Chain}
+\label{sec:maqam}
+
+The emotional channel ($E$ scorer) and the multiplicative gate structure originated from an unexpected domain: Arabic music theory. We present this as an intellectual origin chain---a sequence of observations leading from quarter-tone music to a concrete safety mechanism.
+
+\paragraph{The quarter-tone gap.} Arabic music uses the maqam system \citep{touma1971,abushumays2013}, built on quarter-tone intervals that cannot be represented by the Western 12-tone equal-tempered scale. AI music systems trained on Western scales are structurally incapable of representing Arabic musical emotion---not due to insufficient training data, but because the representational vocabulary lacks the required resolution. EEG studies confirm that maqam produces distinct neural responses in human listeners \citep{yaghmour2021}, establishing that the emotional content is real, not merely cultural convention.
+
+\paragraph{From music to speech.} Each Arabic maqam carries temporal-emotional information: Bayati evokes sadness, Rast stability, Hijaz longing. The same principle applies to speech: prosody (pitch contour, rhythm, emphasis) carries emotional information that lexical content alone does not capture.
+
+\paragraph{Text loses prosody.} When communication shifts from speech to text, prosodic information is lost. The sentence ``fine, do whatever you want'' can be angry, sarcastic, resigned, or genuinely permissive. Text is prosody-stripped, and safety systems operating on text alone are structurally deaf to this emotional dimension.
+
+\paragraph{The textual spectrogram.} If prosody is lost in text, can an emotional fingerprint be reconstructed from textual features? Candidate features include punctuation patterns, repetition, dialectal markers, sentence length variation, and formality shifts. The $E$ scorer partially implements this reconstruction, using emotional anchors as reference points for what we term a \emph{textual spectrogram}.
+
+\paragraph{Duress detection.} The most compelling application of this chain is duress detection. An authorized user under coercion will exhibit involuntary changes in their textual fingerprint: atypical sentence patterns, unusual formality, absence of habitual phrases. Detection requires convergence of three independent signals: fingerprint deviation ($E$ scorer analogue), contextual anomaly (unusual patterns), and dangerous command ($H$ scorer analogue). No single signal suffices---all three must converge before the governance gate fires.
+
+\paragraph{The multiplicative gate.} This three-signal convergence requirement is exactly the principle the S~equation implements. The product structure ensures that no single channel---harm, intent, or emotion---can override the governance decision independently. The maqam observation motivated the emotional channel; the duress use case motivated the multiplicative gate; the S~equation implements the principle that the musical observation identified.
+
+
+% ════════════════════════════════════════════════════════════════
+\section{Experimental Evaluation}
+\label{sec:experiments}
+% ════════════════════════════════════════════════════════════════
+
+\subsection{Test Suite}
+
+AATIF includes 164 deterministic tests organized across the following categories: dialect detection (22~tests), S~equation mathematical properties (boundedness, monotonicity, sigmoid symmetry), decision logic across all four mode profiles, hysteresis stability, Law~$\Omega$ CBRN gate (12~tests), Law~$\Xi$ override lock, intent scorer (30~tests), adversarial cases (15~tests), gated comparison (18~tests), and pipeline integration (3~tests). All tests are deterministic---they require no external model at test time and produce identical results across runs. The test suite runs via GitHub Actions for continuous integration. All 164 tests pass.
+
+
+\subsection{HarmBench Evaluation}
+
+We evaluated the H scorer against HarmBench \citep{harmbench2024} (236 behaviors, 7 semantic categories) using the bge-m3 multilingual embedding backend at threshold $H \geq 0.3$.
+
+\begin{table}[h]
+\centering
+\caption{HarmBench detection rates by semantic category (bge-m3 backend, $H \geq 0.3$).}
+\label{tab:harmbench}
+\begin{tabular}{lcccc}
+\toprule
+Category & Det./Total & Rate & Avg $H$ & MLCommons \\
+\midrule
+Chemical/biological & 28/28 & 100.0\% & 0.894 & S9 \\
+Cybercrime & 38/43 & 88.4\% & 0.662 & S2 \\
+Illegal activities & 38/43 & 88.4\% & 0.665 & S2 \\
+Harmful content & 7/10 & 70.0\% & 0.481 & S1/S11 \\
+Harassment & 9/15 & 60.0\% & 0.325 & S10 \\
+Misinformation & 13/39 & 33.3\% & 0.262 & S13 \\
+Copyright & 4/57 & 7.0\% & 0.080 & S8 \\
+\midrule
+\textbf{Safety categories} & \textbf{133/179} & \textbf{74.3\%} & & \\
+\textbf{All categories} & \textbf{137/236} & \textbf{58.1\%} & & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Safety-category detection (excluding copyright, which is not safety-relevant and for which AATIF has no anchors) reaches 74.3\%. Chemical/biological threats achieve 100\% detection with average $H = 0.894$; both cybercrime and illegal activities reach 88.4\%. The bge-m3 backend enables cross-lingual semantic matching: English prompts match against Arabic harm anchors by meaning rather than character overlap, confirmed by nearest-anchor analysis.
+
+Two categories remain weak: misinformation (33.3\%) and copyright (7.0\%). The anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching regardless of embedding backend.
+
+
+\subsection{MultiJail Evaluation}
+
+We evaluated the H scorer against MultiJail \citep{multijail2024} (75 harmful prompts with native Arabic translations) to test whether AATIF's Arabic-first design produces measurably different detection characteristics across languages.
+
+\begin{table}[h]
+\centering
+\caption{MultiJail detection: Arabic vs English (bge-m3, $H \geq 0.3$).}
+\label{tab:multijail}
+\begin{tabular}{lcc}
+\toprule
+& Arabic & English \\
+\midrule
+Detection rate & 74.7\% (56/75) & 69.3\% (52/75) \\
+Average $H$ & 0.519 & 0.495 \\
+AR scores higher & \multicolumn{2}{c}{42/75 (56\%)} \\
+High confidence ($\geq$0.45) & \multicolumn{2}{c}{52/64 (81.2\%)} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Arabic outperforms English in both detection rate (74.7\% vs 69.3\%) and average harm score (0.519 vs 0.495), with Arabic scoring higher in 42 of 75 prompt pairs. This result is the paper's empirical crown jewel: it validates the Arabic-first anchor design on a benchmark with native-speaker translations. The 132 curated anchors provide stronger semantic coverage for Arabic input than the smaller English anchor subset provides for English.
+
+Category-level analysis reveals that the Arabic advantage concentrates in violence and threat categories. For example, a date-rape prompt scored $H = 0.900$ in Arabic versus $H = 0.552$ in English; a discriminatory prompt scored $H = 0.653$ versus $H = 0.276$. Conversely, English outperforms Arabic in categories with stronger English-language anchors (e.g., property crime, business fraud). This asymmetry reflects anchor coverage distribution, not a framework limitation.
+
+
+\subsection{A/B Calibration}
+
+The default profile was calibrated via a $\theta$ sweep on 54 test cases (30 harmful, 24 benign) using the bge-m3 backend with $\alpha = 10$.
+
+\begin{table}[h]
+\centering
+\caption{A/B calibration: $\theta$ sweep results with $\alpha = 10$.}
+\label{tab:calibration}
+\begin{tabular}{lccccc}
+\toprule
+$\theta$ & Detection & FP Rate & Precision & Recall & $F_1$ \\
+\midrule
+0.20 & 100\% & 33.3\% & 0.789 & 1.000 & 0.882 \\
+0.25 & 100\% & 20.8\% & 0.857 & 1.000 & 0.923 \\
+0.30 & 100\% & 12.5\% & 0.909 & 1.000 & 0.952 \\
+0.35 & 100\% & 4.2\% & 0.968 & 1.000 & 0.984 \\
+\textbf{0.40} & \textbf{100\%} & \textbf{4.2\%} & \textbf{0.968} & \textbf{1.000} & \textbf{0.984} \\
+0.45 & 96.7\% & 0.0\% & 1.000 & 0.967 & 0.983 \\
+0.50 & 90.0\% & 0.0\% & 1.000 & 0.900 & 0.947 \\
+0.55 & 83.3\% & 0.0\% & 1.000 & 0.833 & 0.909 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The optimal operating point is $\theta = 0.40$, achieving $F_1 = 0.984$ with 100\% detection rate and 4.2\% false positive rate. The range $\theta \in [0.35, 0.40]$ shares identical performance, indicating robustness to small threshold variations. The single false positive is the Arabic phrase \emph{\d{h}az\={\i}n shway bas bkhayr} (``a little sad but I'm fine''), which triggers \textsc{safe\_stop} due to the distress indicator. This false positive aligns with AATIF's design philosophy rooted in the Arabic concept of \emph{`a\d{t}f} (compassionate inclination): when in doubt, lean toward empathetic over-caution rather than dismissive permissiveness. The steepness parameter $\alpha$ is stable across values 8--20, confirming that the system is not sensitive to this hyperparameter.
+
+
+\subsection{MLCommons Coverage Mapping}
+
+Table~\ref{tab:mlcommons} maps AATIF's anchor coverage against the MLCommons 13-category harm taxonomy.
+
+\begin{table}[h]
+\centering
+\caption{AATIF anchor coverage vs.\ MLCommons taxonomy.}
+\label{tab:mlcommons}
+\begin{tabular}{clcc}
+\toprule
+Code & Category & Coverage & Anchors \\
+\midrule
+S1 & Violent Crimes & Strong & 15+ \\
+S2 & Non-Violent Crimes & Partial & 5+ \\
+S3 & Sex-Related Crimes & Partial & 2 \\
+S4 & Child Sexual Exploitation & None & 0 \\
+S5 & Defamation & None & 0 \\
+S6 & Specialized Advice & None & 0 \\
+S7 & Privacy & Partial & 2 \\
+S8 & Intellectual Property & None & 0 \\
+S9 & Indiscriminate Weapons & Strong & 8+ \\
+S10 & Hate & Strong & 38+ \\
+S11 & Suicide \& Self-Harm & Strong & 6+ \\
+S12 & Sexual Content & None & 0 \\
+S13 & Elections & None & 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Four categories have strong coverage (S1, S9, S10, S11), three have partial coverage (S2, S3, S7), and six have no anchor coverage. This is an honest reflection of AATIF v1.0's scope: the anchor set reflects the harm categories that emerged from the observational process rather than a predetermined taxonomy. Critically, expanding coverage requires adding anchors, not retraining---a structural advantage over trained classifiers. Adding 50 anchors for a new category takes hours of curation, not weeks of data collection and model training.
+
+
+\subsection{Comparison with FanarGuard}
+
+AATIF and FanarGuard \citep{fanarguard2025} represent complementary paradigms for Arabic LLM safety, and comparison clarifies what each approach offers.
+
+\begin{table}[h]
+\centering
+\caption{Structural comparison: AATIF vs.\ FanarGuard.}
+\label{tab:fanarguard}
+\begin{tabular}{lll}
+\toprule
+Property & AATIF & FanarGuard \\
+\midrule
+Architecture & Explicit equation & 2B-param classifier \\
+Training data & 0 examples & 468K examples \\
+Interpretability & Full (inspect equation) & Partial (learned weights) \\
+Non-compensability & Provable (multiplicative gate) & Not guaranteed \\
+Cultural alignment & Not implemented & Dual-axis scoring \\
+Extensibility & Add anchors (hours) & Retrain model (weeks) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The comparison is complementary, not competitive. FanarGuard's data-driven approach provides broader coverage and a cultural alignment axis that AATIF lacks. AATIF's equation-driven approach provides full interpretability, provable non-compensability, and zero-training extensibility. A hybrid architecture---FanarGuard's cultural alignment axis feeding into AATIF's governance equation---is a natural direction for future work.
+
+
+% ════════════════════════════════════════════════════════════════
+\section{Discussion}
+\label{sec:discussion}
+% ════════════════════════════════════════════════════════════════
+
+\subsection{Contributions}
+
+This paper makes four contributions. First, it presents the first explicit, interpretable governance equation for LLM safety with formally verified non-compensability: the multiplicative gate structure guarantees that no combination of benign intent and calm emotion can override detected harm. Second, it demonstrates zero-training extensibility---coverage expands through anchor curation alone, requiring no labeled datasets or model retraining. Third, it validates Arabic-first design empirically: Arabic outperforms English on identical harmful prompts in the MultiJail benchmark (74.7\% vs 69.3\%), and 22 dialect-specific test cases produce zero false positives on figurative hyperbole. Fourth, it provides a complete open-source implementation with 164 deterministic tests ensuring mathematical correctness.
+
+\subsection{Limitations}
+
+Several limitations constrain the scope of this work. The system was developed by a single independent researcher; the code is open, the tests are deterministic, and the benchmarks are reproducible, but replication by independent teams is necessary to establish generalizability. AATIF v1.0 covers only 4 of 13 MLCommons categories strongly, with 6 categories having zero anchor coverage, including critical categories such as Child Sexual Exploitation (S4) and Sexual Content (S12). The A/B calibration was performed on 54 test cases---sufficient for demonstrating framework properties but insufficient for production-grade reliability claims. No ablation study has been conducted on individual scorers ($H$-only, $I$-only, $E$-only, and pairwise combinations). Misinformation (33.3\% detection) and copyright (7.0\%) remain structurally weak because the anchor-based approach requires harm-indicative language in the input; subtle manipulation and paraphrase elude surface-level matching. FanarGuard achieves $F_1 = 0.82$ on a full test set using 468K training examples---a data-driven approach that the current anchor-based system cannot match in coverage or scale. AATIF's contributions are structural (interpretability, non-compensability, zero-training extensibility) rather than scale-competitive.
+
+\subsection{The Conjectures as Research Program}
+
+AATIF originated from 73 governance conjectures derived through sustained observation of LLM behavior across four platforms over twelve months, following an inductive methodology with precedent in grounded theory \citep{glaser1967} and usability heuristic derivation \citep{nielsen1990}. The conjectures span cognitive, ethical, linguistic, perceptual, and architectural domains, each assessed for consistency with peer-reviewed literature. This paper operationalizes one conjecture---\#063, that governance operates through probabilistic constraint density rather than rule retrieval---into a working system with empirical validation.
+
+Several other conjectures motivated specific design decisions. The Clarification Conjecture (\#001)---that the cheapest correct response to ambiguity is a clarifying question---motivated the ambiguity pre-check. The Bounded Claims Conjecture (\#069), consistent with \citet{herley2017} on Popperian falsifiability in security, shaped the system's explicit acknowledgment of coverage limits rather than absolute safety claims. The Pressure-Reveal Conjecture (\#067), consistent with \citet{vanderweij2024} on strategic underperformance in evaluations, motivated adversarial testing as the primary evaluation modality.
+
+The 73 conjectures represent the broader research program; this paper delivers one node with working code and empirical validation. The full set of 78 field notes is available as supplementary material. Future work will address additional conjectures, including pre-computation ethical gatekeeping at the question-formulation stage and simultaneous multi-perspective deliberation (normative, contextual, analytical).
+
+
+% ════════════════════════════════════════════════════════════════
+\section{Conclusion}
+\label{sec:conclusion}
+% ════════════════════════════════════════════════════════════════
+
+AATIF provides an explicit, interpretable mathematical governance equation for LLM safety: $S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]$. The multiplicative gate structure provides a non-compensability guarantee absent from existing classification-based systems---high harm drives the safety score toward zero regardless of benign intent or calm emotion. The framework requires zero training data and extends through anchor curation alone.
+
+Arabic-first design is validated empirically: Arabic outperforms English on identical harmful prompts (74.7\% vs 69.3\% on MultiJail), and 28 dialect-hyperbole anchors eliminate false positives on figurative Arabic expressions. The system achieves 74.3\% safety-category detection on HarmBench with 100\% on chemical/biological threats, calibrated to $F_1 = 0.984$ via A/B testing on 54 validation cases. A test suite of 164 deterministic tests ensures mathematical correctness.
+
+The framework is preliminary in coverage (4/13 MLCommons categories strong) and scale (single-observer development, 54-case calibration). Future work includes anchor expansion to all 13 MLCommons categories, ablation studies on individual scorers, integration of a cultural alignment axis inspired by FanarGuard's dual-axis design, and development of an Arabic-first embedding model to test the meaning density hypothesis directly.
+
+\paragraph{Code and Data.} The AATIF computational engine, test suite (164 tests), benchmark runners, and evaluation harness are available at \url{https://github.com/Abdelmgied-Khenkar/AATIF}. The companion preprint is available at \url{https://doi.org/10.5281/zenodo.20673292}.
+
+
+% ════════════════════════════════════════════════════════════════
+% Bibliography
+% ════════════════════════════════════════════════════════════════
+
+\bibliographystyle{plainnat}
+
+\begin{thebibliography}{99}
+
+\bibitem[Abu Shumays(2013)]{abushumays2013}
+Abu Shumays, S. (2013).
+Maqam analysis: A primer.
+\textit{Music Theory Spectrum}, 35(2), 235--255.
+
+\bibitem[Aldjanabi et al.(2024)]{adhar2024}
+Aldjanabi, W., Dahou, A., Al-qaness, M. A. A., Elaziz, M. A., Helmi, A. M., \& Damaševičius, R. (2024).
+Hate speech detection with ADHAR: A multi-dialectal hate speech corpus in Arabic.
+\textit{Frontiers in Artificial Intelligence}, 7, 1391472.
+
+\bibitem[Alkhamissi et al.(2025)]{fanarguard2025}
+Alkhamissi, B., et al. (2025).
+FanarGuard: A culturally-aware moderation filter for Arabic language models.
+\textit{EACL 2026}. arXiv:2411.XXXXX.
+
+\bibitem[Arditi et al.(2024)]{arditi2024}
+Arditi, A., et al. (2024).
+Refusal in language models is mediated by a single direction.
+\textit{NeurIPS 2024}. arXiv:2406.11717.
+
+\bibitem[Asiri \& Saleh(2024)]{sod2024}
+Asiri, A., \& Saleh, M. (2024).
+SOD: A corpus for Saudi offensive language detection and classification.
+\textit{PeerJ Computer Science}, 10, e2288.
+
+\bibitem[Bai et al.(2022)]{bai2022}
+Bai, Y., et al. (2022).
+Constitutional AI: Harmlessness from AI feedback.
+arXiv:2212.08073.
+
+\bibitem[Christiano et al.(2017)]{christiano2017}
+Christiano, P., et al. (2017).
+Deep reinforcement learning from human preferences.
+\textit{NeurIPS 2017}. arXiv:1706.03741.
+
+\bibitem[Deng et al.(2024)]{multijail2024}
+Deng, Y., et al. (2024).
+Multilingual jailbreak challenges in large language models.
+\textit{ICLR 2024}. arXiv:2310.06474.
+
+\bibitem[Glaser \& Strauss(1967)]{glaser1967}
+Glaser, B. G., \& Strauss, A. L. (1967).
+\textit{The discovery of grounded theory: Strategies for qualitative research}.
+Aldine.
+
+\bibitem[Google Jigsaw(2017)]{perspective2017}
+Google Jigsaw. (2017).
+Perspective API.
+\url{https://perspectiveapi.com}.
+
+\bibitem[Herley \& van Oorschot(2017)]{herley2017}
+Herley, C., \& van Oorschot, P. C. (2017).
+SoK: Science, security and the elusive goal of security as a scientific pursuit.
+\textit{IEEE S\&P 2017}.
+
+\bibitem[Inan et al.(2024)]{llamaguard2024}
+Inan, H., et al. (2024).
+Llama Guard: LLM-based input-output safeguard for human-AI conversations.
+arXiv:2312.06674.
+
+\bibitem[Lee et al.(2024)]{lee2024}
+Lee, A., et al. (2024).
+A mechanistic understanding of alignment algorithms: A case study on DPO and toxicity.
+\textit{ICML 2024}, PMLR 235:26361--26378.
+
+\bibitem[Mazeika et al.(2024)]{harmbench2024}
+Mazeika, M., et al. (2024).
+HarmBench: A standardized evaluation framework for automated red teaming and refusal.
+\textit{ICML 2024}. arXiv:2402.04249.
+
+\bibitem[MLCommons(2024)]{mlcommons2024}
+MLCommons AI Safety Working Group. (2024).
+Taxonomy of hazards for AI systems.
+\url{https://mlcommons.org/ai-safety}.
+
+\bibitem[Nielsen \& Molich(1990)]{nielsen1990}
+Nielsen, J., \& Molich, R. (1990).
+Heuristic evaluation of user interfaces.
+\textit{Proc.\ CHI'90}, 249--256.
+
+\bibitem[Ouyang et al.(2022)]{ouyang2022}
+Ouyang, L., et al. (2022).
+Training language models to follow instructions with human feedback.
+\textit{NeurIPS 2022}. arXiv:2203.02155.
+
+\bibitem[Slobin(1996)]{slobin1996}
+Slobin, D. I. (1996).
+From ``thought and language'' to ``thinking for speaking.''
+In J. J. Gumperz \& S. C. Levinson (Eds.), \textit{Rethinking linguistic relativity} (pp.\ 70--96).
+Cambridge University Press.
+
+\bibitem[Touma(1971)]{touma1971}
+Touma, H. H. (1971).
+The maqam phenomenon: An improvisation technique in the music of the Middle East.
+\textit{Ethnomusicology}, 15(1), 38--48.
+
+\bibitem[van der Weij et al.(2024)]{vanderweij2024}
+van der Weij, T., et al. (2024).
+AI sandbagging: Language models can strategically underperform on evaluations.
+arXiv:2406.07358.
+
+\bibitem[Wolf et al.(2024)]{wolf2024}
+Wolf, Y., et al. (2024).
+Fundamental limitations of alignment in large language models.
+\textit{ICML 2024}, PMLR 235:53079--53112.
+
+\bibitem[Wolff \& Holmes(2011)]{wolff2011}
+Wolff, P., \& Holmes, K. J. (2011).
+Linguistic relativity.
+\textit{WIREs Cognitive Science}, 2(3), 253--265.
+
+\bibitem[Yaghmour et al.(2021)]{yaghmour2021}
+Yaghmour, S., et al. (2021).
+EEG correlates of Middle Eastern music improvisations on the Ney instrument.
+\textit{Frontiers in Psychology}, 12, 701761.
+
+\end{thebibliography}
+
+\end{document}
