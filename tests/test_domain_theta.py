@@ -72,8 +72,15 @@ class TestDomainConfig:
     def test_get_domain_theta_none_returns_none(self):
         assert get_domain_theta(None) is None
 
-    def test_get_domain_theta_unknown_returns_none(self):
-        assert get_domain_theta("unknown_domain") is None
+    def test_get_domain_theta_unknown_raises_error(self):
+        """Unknown domain must raise ValueError — typos are safety-critical."""
+        with pytest.raises(ValueError, match="Unknown domain"):
+            get_domain_theta("unknown_domain")
+
+    def test_get_domain_theta_typo_raises_error(self):
+        """Typo 'heathcare' must not silently fall back to profile θ."""
+        with pytest.raises(ValueError, match="Unknown domain"):
+            get_domain_theta("heathcare")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -120,12 +127,11 @@ class TestDomainOverridesProfile:
         assert r_domain["S"] == r_no_domain["S"]
         assert r_domain["decision"] == r_no_domain["decision"]
 
-    def test_unknown_domain_falls_back_to_profile(self):
-        """Unknown domain → profile theta used."""
-        r = compute_s_gated_from_scores(self.H, self.I, self.E,
+    def test_unknown_domain_raises_error(self):
+        """Unknown domain must raise ValueError, not silently fall back."""
+        with pytest.raises(ValueError, match="Unknown domain"):
+            compute_s_gated_from_scores(self.H, self.I, self.E,
                                          profile="default", domain="unknown_xyz")
-        assert r["theta_source"] == "profile"
-        assert r["theta_effective"] == 0.40
 
 
 # ═══════════════════════════════════════════════════════════════

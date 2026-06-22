@@ -359,13 +359,25 @@ def get_domain_theta(domain: str | None) -> float | None:
     Return the θ override for a given domain, or None if no override.
 
     When domain is specified, this θ replaces the profile's θ.
-    When domain is None or not recognized, the profile's θ is used.
+    When domain is None, the profile's θ is used (returns None).
+
+    Raises ValueError if domain is a non-None string that is not
+    in DOMAIN_CONFIG. This is a safety-critical guard: a typo like
+    "heathcare" must fail loudly, not silently fall back to a
+    different safety threshold.
+
+    Codex review 2026-06-22: "In governance/safety code, silent
+    fallback for unknown domains is a meaningful failure mode."
     """
     if domain is None:
         return None
     cfg = DOMAIN_CONFIG.get(domain)
     if cfg is None:
-        return None
+        valid = ", ".join(sorted(DOMAIN_CONFIG.keys()))
+        raise ValueError(
+            f"Unknown domain '{domain}'. "
+            f"Valid domains: {valid}"
+        )
     return cfg["theta"]
 
 
