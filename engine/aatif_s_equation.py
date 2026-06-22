@@ -306,6 +306,69 @@ GATED_PROFILES = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# DOMAIN CONFIGURATION — θ(d)
+#
+# Domain determines the HARM THRESHOLD (θ). This is the core of
+# "الاذي مالوش توقيت" refined: TIME doesn't change θ. DOMAIN does.
+#
+# Healthcare harm is more dangerous than e-commerce harm, so the gate
+# closes EARLIER (lower θ = less tolerance for harm signals).
+#
+# When domain is specified, it OVERRIDES the profile's θ.
+# Profiles still control w1, w2, alpha (quality weights and gate steepness).
+# θ comes from domain — because harm sensitivity is a property of the
+# CONTEXT, not the system's personality.
+#
+# Hard override (H > 0.7 → SAFE_FREEZE) stays ABSOLUTE regardless of domain.
+# "الاذي مالوش توقيت" — and it has no domain either at the extreme.
+#
+# Architect: "θ varies by domain, not by time"
+# Design session: 2026-06-22
+# ---------------------------------------------------------------------------
+DOMAIN_CONFIG = {
+    "healthcare": {
+        "theta": 0.25,
+        "desc": "Medical/health context — gate closes early, harm is physical",
+    },
+    "education": {
+        "theta": 0.30,
+        "desc": "Children/students — gate closes early, harm is developmental",
+    },
+    "general": {
+        "theta": 0.40,
+        "desc": "Default — balanced gate (same as calibrated default profile)",
+    },
+    "tech": {
+        "theta": 0.40,
+        "desc": "Technical support — same as general",
+    },
+    "ecommerce": {
+        "theta": 0.40,
+        "desc": "Commercial/shopping — same as general",
+    },
+    "creative": {
+        "theta": 0.50,
+        "desc": "Creative writing/art — wider tolerance for sensitive topics",
+    },
+}
+
+
+def get_domain_theta(domain: str | None) -> float | None:
+    """
+    Return the θ override for a given domain, or None if no override.
+
+    When domain is specified, this θ replaces the profile's θ.
+    When domain is None or not recognized, the profile's θ is used.
+    """
+    if domain is None:
+        return None
+    cfg = DOMAIN_CONFIG.get(domain)
+    if cfg is None:
+        return None
+    return cfg["theta"]
+
+
 # Hard override threshold for gated mode: H above this → SAFE_FREEZE
 H_GATED_HARD_OVERRIDE = 0.7
 
@@ -417,7 +480,8 @@ def compute_s_from_scores(H: float, I: float, E: float,
 
 
 def compute_s_gated_from_scores(H: float, I: float, E: float,
-                                profile: str = "default") -> dict:
+                                profile: str = "default",
+                                domain: str | None = None) -> dict:
     """
     Compute S using the GATED equation, with F and decision.
 
@@ -445,9 +509,15 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
     """
     p = GATED_PROFILES[profile]
     w1, w2 = p["w1"], p["w2"]
-    alpha, theta = p["alpha"], p["theta"]
+    alpha = p["alpha"]
+
+    # θ(d): domain overrides profile theta when specified.
+    # This is the core of domain-parameterized governance.
+    domain_theta = get_domain_theta(domain)
+    theta = domain_theta if domain_theta is not None else p["theta"]
 
     # HARD OVERRIDE: H above absolute threshold → immediate freeze
+    # This is ABSOLUTE — no domain, no profile, no exception.
     if H > H_GATED_HARD_OVERRIDE:
         # Still compute S for diagnostics, but decision is forced
         quality = sigmoid(w1 * I + w2 * E)
@@ -466,6 +536,9 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
             "F": round(F, 4),
             "decision": "SAFE_FREEZE",
             "profile": profile,
+            "domain": domain,
+            "theta_effective": round(theta, 4),
+            "theta_source": "domain" if domain_theta is not None else "profile",
             "equation_mode": "gated",
             "hard_override": True,
         }
@@ -498,6 +571,9 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
         "F": round(F, 4),
         "decision": decision,
         "profile": profile,
+        "domain": domain,
+        "theta_effective": round(theta, 4),
+        "theta_source": "domain" if domain_theta is not None else "profile",
         "equation_mode": "gated",
         "hard_override": False,
     }
@@ -540,6 +616,7 @@ class AATIFEngine:
                 verbose: bool = False,
                 conversation_id: str = None,
                 equation_mode: str = "classic",
+                domain: str = None,
                 link_h_to_i: bool = False,
                 h_i_lambda: float = H_I_LINK_LAMBDA) -> dict:
         """
@@ -556,10 +633,17 @@ class AATIFEngine:
                             (prevents decision oscillation in conversations)
             equation_mode: "classic" for S = σ(w₁·I + w₂·E − w₃·H)
                           "gated"   for S = σ(w₁·I + w₂·E) × (1 − σ(α·(H − θ)))
+            domain: one of "healthcare", "education", "general", "tech",
+                    "ecommerce", "creative", or None.
+                    When specified (gated mode only), overrides the profile's θ
+                    with domain-specific θ(d). This is domain-parameterized
+                    governance: harm sensitivity is a property of CONTEXT.
+                    "الاذي مالوش توقيت" — time doesn't change θ. Domain does.
 
         Returns:
             dict with keys: text, H, I, E, S, F_prime, F, decision,
-                           profile, equation_mode,
+                           profile, equation_mode, domain,
+                           theta_effective, theta_source (gated mode),
                            ambiguity_override,
                            hysteresis (if conversation_id provided)
                            (+ h_nearest, i_nearest, e_nearest if verbose)
@@ -587,7 +671,8 @@ class AATIFEngine:
 
         # Compute S and decision using selected equation
         if equation_mode == "gated":
-            result = compute_s_gated_from_scores(H, I, E, profile=profile)
+            result = compute_s_gated_from_scores(H, I, E, profile=profile,
+                                                  domain=domain)
         else:
             result = compute_s_from_scores(H, I, E, profile=profile)
         result["text"] = text
@@ -676,7 +761,8 @@ class AATIFEngine:
         return result
 
     def compute_all_profiles(self, text: str,
-                            equation_mode: str = "classic") -> list[dict]:
+                            equation_mode: str = "classic",
+                            domain: str = None) -> list[dict]:
         """
         Run scorers once, then compute S across all profiles.
         Efficient: only one embedding call per scorer.
@@ -684,6 +770,7 @@ class AATIFEngine:
         Args:
             text: Arabic input text
             equation_mode: "classic" uses 5 profiles, "gated" uses 3 profiles
+            domain: if specified (gated mode), overrides profile θ with θ(d)
         """
         h_result = self.h_scorer.score(text)
         i_result = self.i_scorer.score(text)
@@ -695,7 +782,8 @@ class AATIFEngine:
         if equation_mode == "gated":
             for profile_name in ["high_sensitivity", "default", "creative"]:
                 r = compute_s_gated_from_scores(H, I, E,
-                                                profile=profile_name)
+                                                profile=profile_name,
+                                                domain=domain)
                 r["text"] = text
                 results.append(r)
         else:
