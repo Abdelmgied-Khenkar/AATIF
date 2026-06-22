@@ -311,3 +311,93 @@ class TestBackwardCompatibility:
             r = compute_s_gated_from_scores(0.3, 0.7, 0.6, profile=profile)
             assert "decision" in r
             assert "S" in r
+
+
+# ═══════════════════════════════════════════════════════════════
+# Test 9: Fail-loud hardening — the unknown-domain guard must hold
+#         under every adversarial spelling AND under hard override.
+#         (Added 2026-06-22 by Agent حسّاب — locks the governance
+#          guarantee that a typo'd domain can never silently change
+#          the safety threshold, even when H is in the freeze band.)
+# ═══════════════════════════════════════════════════════════════
+
+class TestUnknownDomainFailsLoud:
+    """A non-None domain not in DOMAIN_CONFIG must ALWAYS raise ValueError."""
+
+    @pytest.mark.parametrize("bad_domain", [
+        "",               # empty string is not None → must raise, not fall back
+        "Healthcare",     # wrong case
+        "HEALTHCARE",     # wrong case
+        " healthcare",    # leading whitespace
+        "healthcare ",    # trailing whitespace
+        "heathcare",      # typo
+        "medical",        # plausible synonym that is NOT configured
+        "health-care",    # hyphenated variant
+    ])
+    def test_invalid_domain_raises(self, bad_domain):
+        with pytest.raises(ValueError, match="Unknown domain"):
+            get_domain_theta(bad_domain)
+
+    @pytest.mark.parametrize("bad_domain", ["", "Healthcare", "heathcare", "medical"])
+    def test_invalid_domain_raises_in_compute(self, bad_domain):
+        """Same guard must fire through compute_s_gated_from_scores."""
+        with pytest.raises(ValueError, match="Unknown domain"):
+            compute_s_gated_from_scores(0.30, 0.7, 0.6, domain=bad_domain)
+
+    @pytest.mark.parametrize("bad_domain", ["heathcare", "Healthcare", "", "medical"])
+    def test_invalid_domain_not_masked_by_hard_override(self, bad_domain):
+        """
+        SAFETY-CRITICAL: when H is in the hard-override band (H > 0.7),
+        an invalid domain must STILL raise — the SAFE_FREEZE path must
+        not swallow a configuration typo. Fail loud beats fail safe-looking.
+        """
+        assert 0.85 > H_GATED_HARD_OVERRIDE  # sanity: 0.85 is in freeze band
+        with pytest.raises(ValueError, match="Unknown domain"):
+            compute_s_gated_from_scores(0.85, 0.9, 0.9, domain=bad_domain)
+
+    def test_error_message_lists_valid_domains(self):
+        """The failure must be actionable — it names the valid domains."""
+        with pytest.raises(ValueError) as exc:
+            get_domain_theta("medical")
+        msg = str(exc.value)
+        for d in DOMAIN_CONFIG:
+            assert d in msg, f"valid domain {d!r} missing from error message"
+
+
+# ═══════════════════════════════════════════════════════════════
+# Test 10: DOMAIN_CONFIG structural invariants
+#          (Every domain must carry a usable θ in [0,1] and a desc;
+#           the design ordering must hold at the config level so a
+#           future edit to θ values can't silently invert sensitivity.)
+# ═══════════════════════════════════════════════════════════════
+
+class TestDomainConfigInvariants:
+    """Structural guarantees about DOMAIN_CONFIG itself."""
+
+    @pytest.mark.parametrize("domain", list(DOMAIN_CONFIG.keys()))
+    def test_theta_is_float_in_unit_interval(self, domain):
+        theta = DOMAIN_CONFIG[domain]["theta"]
+        assert isinstance(theta, float)
+        assert 0.0 <= theta <= 1.0
+
+    @pytest.mark.parametrize("domain", list(DOMAIN_CONFIG.keys()))
+    def test_theta_below_hard_override(self, domain):
+        """No domain θ may sit at/above the absolute freeze line."""
+        assert DOMAIN_CONFIG[domain]["theta"] < H_GATED_HARD_OVERRIDE
+
+    @pytest.mark.parametrize("domain", list(DOMAIN_CONFIG.keys()))
+    def test_every_domain_has_nonempty_desc(self, domain):
+        desc = DOMAIN_CONFIG[domain].get("desc", "")
+        assert isinstance(desc, str) and desc.strip()
+
+    def test_sensitivity_ordering_holds(self):
+        """
+        Design intent: stricter (lower θ) → more permissive (higher θ).
+        healthcare ≤ education ≤ general = tech = ecommerce ≤ creative.
+        Locking this prevents an accidental inversion of safety posture.
+        """
+        cfg = DOMAIN_CONFIG
+        assert cfg["healthcare"]["theta"] <= cfg["education"]["theta"]
+        assert cfg["education"]["theta"] <= cfg["general"]["theta"]
+        assert cfg["general"]["theta"] == cfg["tech"]["theta"] == cfg["ecommerce"]["theta"]
+        assert cfg["general"]["theta"] <= cfg["creative"]["theta"]
