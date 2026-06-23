@@ -307,7 +307,7 @@ class TestBackwardCompatibility:
 
     def test_all_existing_profiles_still_work(self):
         """All gated profiles work without domain."""
-        for profile in ["default", "high_sensitivity", "creative", "balanced_strict"]:
+        for profile in ["default", "high_sensitivity", "relaxed", "balanced_strict"]:
             r = compute_s_gated_from_scores(0.3, 0.7, 0.6, profile=profile)
             assert "decision" in r
             assert "S" in r

@@ -43,7 +43,7 @@ Gated variant (v2):
     Profile variants add α (gate steepness) and θ (harm threshold):
       default:          α=10, θ=0.40  (calibrated 2026-06-19 via bge-m3 A/B test)
       high_sensitivity: α=15, θ=0.45
-      creative:         α=8,  θ=0.55
+      relaxed:          α=8,  θ=0.55
       balanced_strict:  α=10, θ=0.40  (identical to default)
 
     2026-06-20 precision fix: held-out validation (56 cases) exposed an H
@@ -287,10 +287,10 @@ GATED_PROFILES = {
                        # MORE permissive than default across H∈[0.20,0.50] — a
                        # logic inversion contradicting the profile's purpose,
                        # its own comment, and the v9.7 spec (θ=0.30). Gate
-                       # ordering now: high_sensitivity ≤ default ≤ creative.
+                       # ordering now: high_sensitivity ≤ default ≤ relaxed.
         "desc": "Conservative gate — triggers earlier (θ=0.30), sharper cutoff"
     },
-    "creative": {
+    "relaxed": {
         "w1": 3.0,
         "w2": 2.5,
         "alpha": 8,    # gentler slope → wider transition
@@ -639,7 +639,7 @@ class AATIFEngine:
             profile: one of "default", "high_sensitivity", "safe_environment",
                      "creative", "casual"
                      (gated mode only supports: "default", "high_sensitivity",
-                     "creative")
+                     "relaxed")
             verbose: if True, include nearest-anchor diagnostics
             conversation_id: if provided, applies γ+ hysteresis across turns
                             (prevents decision oscillation in conversations)
@@ -792,7 +792,7 @@ class AATIFEngine:
 
         results = []
         if equation_mode == "gated":
-            for profile_name in ["high_sensitivity", "default", "creative"]:
+            for profile_name in ["high_sensitivity", "default", "relaxed"]:
                 r = compute_s_gated_from_scores(H, I, E,
                                                 profile=profile_name,
                                                 domain=domain)

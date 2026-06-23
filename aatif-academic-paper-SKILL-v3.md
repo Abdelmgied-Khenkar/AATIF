@@ -46,10 +46,10 @@ For EVERY number, count, parameter, threshold, or quantitative claim in the pape
 
 1. **Parameters (w₁, w₂, α, θ)** → `grep` or `Read` the actual values from `engine/aatif_s_equation.py`. Check `DEFAULT_PARAMS` and `GATED_PROFILES`.
 2. **Anchor counts (H, I, E)** → Count the actual anchors from the source files:
-   - H anchors → `engine/aatif_harm_scorer.py` (count all anchors including base, safe, counter-harm, CBRN)
+   - H anchors → `engine/aatif_semantic_scorer.py` (count all anchors in HARM_ANCHORS list)
    - I anchors → `engine/aatif_intent_scorer.py`
    - E anchors → `engine/aatif_emotion_scorer.py`
-   - Dialect-hyperbole anchors → check the dialect disambiguation section in the harm scorer
+   - Dialect-hyperbole anchors → check the dialect disambiguation section in `engine/aatif_semantic_scorer.py`
 3. **Benchmark results** → Read the actual JSON files in `benchmarks/*.json`. Do not reuse numbers from memory or from a previous session.
 4. **Test counts** → Run `pytest --co -q` in the engine directory, or count test functions with `grep -c "def test_"`. Count subtests separately.
 5. **Decision thresholds** → Check `THRESHOLDS` dict in `engine/aatif_s_equation.py`.
@@ -144,7 +144,7 @@ The paper follows this structure — the S equation appears on PAGE ONE, not bur
    - Dialect hyperbole disambiguation — 35 anchors, zero false positives
    - Maqam-to-safety origin chain — 6-step intellectual origin story, not music theory
 5. **§5 Experimental Evaluation** — Tables for each benchmark:
-   - 166 deterministic tests + 73 subtests
+   - 439 pytest-collected tests (including parametrized held-out cases)
    - HarmBench (236 behaviors)
    - MultiJail (75 prompts, AR vs EN)
    - Held-out validation (56 cases)
@@ -160,8 +160,8 @@ Before writing ANY number in the paper, verify from the actual source:
 
 | Claim | Verify From |
 |-------|------------|
-| Anchor counts (H, I, E) | `grep` the actual anchor lists in `engine/aatif_harm_scorer.py`, `aatif_intent_scorer.py`, `aatif_emotion_scorer.py` |
-| Dialect-hyperbole anchors | Count from `engine/aatif_harm_scorer.py` dialect disambiguation section |
+| Anchor counts (H, I, E) | `grep` the actual anchor lists in `engine/aatif_semantic_scorer.py`, `aatif_intent_scorer.py`, `aatif_emotion_scorer.py` |
+| Dialect-hyperbole anchors | Count from `engine/aatif_semantic_scorer.py` dialect disambiguation section |
 | S equation parameters | Read `engine/aatif_s_equation.py` default profile |
 | Test count | Run `pytest --co -q` in the engine directory, or count test functions |
 | HarmBench results | Read `benchmarks/harmbench_results_bge.json` |
@@ -176,19 +176,28 @@ Before writing ANY number in the paper, verify from the actual source:
 
 **Do NOT rely on memory files, README, previous paper versions, or THIS SKILL FILE for numbers. Always go to the code.**
 
-## Current Verified Numbers (as of 2026-06-20)
+## Current Verified Numbers (as of 2026-06-22)
 
-These were verified via the held-out test, code inspection, and direct counting. **RE-VERIFY before using — these go stale:**
+These were verified via pytest --collect-only, code inspection, and direct counting. **RE-VERIFY before using — these go stale:**
 
 - S equation: `S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]`
-- Parameters: w₁=2.0, w₂=1.5, α=10, θ=0.40
-- ⚠️ θ is 0.40 — NOT 0.55. Previous drafts had 0.55 which was wrong.
+- Parameters (default profile): w₁=2.0, w₂=1.5, α=10, θ=0.40
+- ⚠️ θ(default) is 0.40 — NOT 0.55. Previous drafts had 0.55 which was wrong.
 - Hard override: H > 0.7 → SAFE_FREEZE
-- H scorer: 169 anchors (base + safe + counter-harm + CBRN)
-- I scorer: 44 anchors
-- E scorer: 32 anchors
+- H scorer: 169 anchors in HARM_ANCHORS (file: `engine/aatif_semantic_scorer.py`)
+- I scorer: 44 anchors in INTENT_ANCHORS (file: `engine/aatif_intent_scorer.py`)
+- E scorer: 32 anchors in EMOTION_ANCHORS (file: `engine/aatif_emotion_scorer.py`)
+- Total anchors across all three scorers: 245
 - Dialect-hyperbole anchors: 35
-- Total tests: 166 pytest + 73 subtests
+- Total tests: 439 (pytest-collected, including parametrized held-out cases)
+- GATED_PROFILES (4 profiles in `engine/aatif_s_equation.py`):
+  - `default`: α=10, θ=0.40, w₁=2.0, w₂=1.5
+  - `high_sensitivity`: α=15, θ=0.30, w₁=2.0, w₂=1.0
+  - `relaxed`: α=8, θ=0.55, w₁=3.0, w₂=2.5
+  - `balanced_strict`: α=10, θ=0.40, w₁=2.0, w₂=1.5
+- ⚠️ Profile formerly called "creative" was renamed to "relaxed" (2026-06-20). "Creative" as a DOMAIN name still exists — don't confuse the two.
+- ⚠️ high_sensitivity θ is 0.30 — NOT 0.45. Previous versions had 0.45 which was a logic inversion (corrected 2026-06-20).
+- θ(d) domain parameterization (DOMAIN_CONFIG): Healthcare=0.25, Education=0.30, General=0.40, Tech=0.40, E-Commerce=0.40, Creative=0.50
 - Held-out F1: 0.9615 (56 cases, precision=0.96, recall=0.96)
 - ⚠️ In-sample F1 was 0.984 — this is NOT the generalizable number
 - ⚠️ Held-out set partially informed the anchor refinement — not fully blind. This caveat MUST appear in the paper.

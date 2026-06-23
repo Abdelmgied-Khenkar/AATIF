@@ -104,7 +104,7 @@ def run_comparison():
               f"→ {_decision_emoji(c['decision'])} {c['decision']}{guard}")
 
     print("\n  Gated profiles:")
-    for pname in ["high_sensitivity", "default", "creative"]:
+    for pname in ["high_sensitivity", "default", "relaxed"]:
         g = compute_s_gated_from_scores(H, I, E, profile=pname)
         override = " [HARD OVERRIDE]" if g.get("hard_override") else ""
         print(f"    {pname:<20} S={g['S']:.4f}  gate={g['gate']:.4f}  "
@@ -194,19 +194,19 @@ class TestGatedEquationProperties(unittest.TestCase):
 
     def test_all_gated_profiles_exist(self):
         """All four gated profiles should compute without error."""
-        for profile in ["default", "high_sensitivity", "creative",
+        for profile in ["default", "high_sensitivity", "relaxed",
                         "balanced_strict"]:
             r = compute_s_gated_from_scores(0.5, 0.5, 0.5, profile=profile)
             self.assertEqual(r["profile"], profile)
             self.assertEqual(r["equation_mode"], "gated")
 
-    def test_high_sensitivity_stricter_than_creative(self):
-        """Same scores: high_sensitivity should produce lower S than creative."""
+    def test_high_sensitivity_stricter_than_relaxed(self):
+        """Same scores: high_sensitivity should produce lower S than relaxed."""
         H, I, E = 0.4, 0.7, 0.5
         r_hs = compute_s_gated_from_scores(H, I, E, profile="high_sensitivity")
-        r_cr = compute_s_gated_from_scores(H, I, E, profile="creative")
+        r_cr = compute_s_gated_from_scores(H, I, E, profile="relaxed")
         self.assertLess(r_hs["S"], r_cr["S"],
-            f"high_sensitivity S={r_hs['S']} should be < creative S={r_cr['S']}")
+            f"high_sensitivity S={r_hs['S']} should be < relaxed S={r_cr['S']}")
 
     def test_balanced_strict_matches_default(self):
         """After θ calibration (2026-06-19), balanced_strict and default both
@@ -228,7 +228,7 @@ class TestGatedEquationProperties(unittest.TestCase):
 
     def test_gate_strictness_ordering(self):
         """Regression (2026-06-20): the harm gate must get MORE permissive as we
-        move from high_sensitivity → default → creative, at EVERY harm level.
+        move from high_sensitivity → default → relaxed, at EVERY harm level.
 
         gate(H) = 1 − σ(α(H − θ)); higher gate = more open = more permissive.
         A larger θ shifts the gate to close later, so for the ordering to hold,
@@ -242,13 +242,13 @@ class TestGatedEquationProperties(unittest.TestCase):
             g_df = compute_s_gated_from_scores(H, 0.5, 0.5,
                                                profile="default")["gate"]
             g_cr = compute_s_gated_from_scores(H, 0.5, 0.5,
-                                               profile="creative")["gate"]
+                                               profile="relaxed")["gate"]
             self.assertLessEqual(g_hs, g_df + 1e-9,
                 f"H={H}: high_sensitivity gate {g_hs:.4f} must be <= default "
                 f"gate {g_df:.4f} (high_sensitivity must be the STRICTER gate)")
             self.assertLessEqual(g_df, g_cr + 1e-9,
-                f"H={H}: default gate {g_df:.4f} must be <= creative gate "
-                f"{g_cr:.4f} (creative is the most permissive gate)")
+                f"H={H}: default gate {g_df:.4f} must be <= relaxed gate "
+                f"{g_cr:.4f} (relaxed is the most permissive gate)")
 
 
 class TestClassicEquationUnchanged(unittest.TestCase):
