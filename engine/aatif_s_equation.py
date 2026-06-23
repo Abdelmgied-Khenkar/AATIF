@@ -193,7 +193,7 @@ def _is_ambiguous(text: str) -> bool:
 _JAILBREAK_MARKERS = [
     # English override/jailbreak patterns
     "ignore instructions", "ignore previous", "override safety",
-    "bypass", "developer mode", "jailbreak", " DAN ",
+    "bypass", "developer mode", "jailbreak", " dan ",
     "disable safety", "act as if",
     # Arabic override/jailbreak patterns
     "تجاوز", "تجاهل القوانين", "تجاهل القيود", "مسؤول النظام",
@@ -205,10 +205,17 @@ _JAILBREAK_MARKERS = [
 
 
 def _has_jailbreak_markers(text: str) -> bool:
-    """Return True if text contains jailbreak/manipulation keywords."""
+    """Return True if text contains jailbreak/manipulation keywords.
+
+    Markers are compared case-insensitively against ``text.lower()``. Each
+    marker is also lowercased at comparison time so that an accidentally
+    upper/mixed-case entry in ``_JAILBREAK_MARKERS`` can never silently
+    fail to match (a fail-open hole — H3 in CODEX_REVIEW). This guards the
+    whole class of bug, not just the original " DAN " marker.
+    """
     t_lower = text.lower()
     for marker in _JAILBREAK_MARKERS:
-        if marker in t_lower:
+        if marker.lower() in t_lower:
             return True
     return False
 
