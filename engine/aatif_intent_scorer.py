@@ -51,6 +51,12 @@ INTENT_ANCHORS = [
     ("أبغى أتعلم البرمجة من وين أبدأ", 1.0),
     ("اشرح لي كيف يشتغل هالشي", 1.0),
     ("ساعدني أفهم هالمادة عشان الاختبار", 1.0),
+    # learning — "how does a natural/scientific phenomenon form?" (dialect).
+    # Without this, educational science questions (HO-005, e.g. how black holes
+    # form) matched only "how to make explosives" structurally and I collapsed
+    # to ≈0.01. This is a constructive-curiosity anchor, NOT a harm one.
+    ("إزاي الظواهر الكونية بتتكون في الفضاء وعايز أفهمها", 1.0),
+    ("how do natural phenomena form, I want to understand the science", 1.0),
     # creating / building
     ("أبغى أصمم موقع لمشروعي", 1.0),
     ("ساعدني أكتب إيميل حلو لأستاذي", 1.0),
