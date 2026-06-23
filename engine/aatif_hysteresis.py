@@ -66,6 +66,12 @@ EPSILON_H = 0.05       # buffer for H-based harm gate (γ+ original)
 # Fail-closed states — these never auto-exit
 FAIL_CLOSED = {"SAFE_FREEZE"}
 
+# Maximum consecutive turns in CLARIFY before escalating to SAFE_STOP.
+# If the system asks for clarification and the user keeps being vague
+# (لف ودار), evasion is itself a signal — الشك لصالح السلامة.
+# After MAX_CLARIFY_TURNS in CLARIFY state, the next CLARIFY → SAFE_STOP.
+MAX_CLARIFY_TURNS = 2
+
 # Decision severity ordering (higher index = more restrictive)
 SEVERITY = {
     "EXECUTE": 0,
@@ -231,6 +237,18 @@ class HysteresisController:
             final_decision = raw_decision
             held = False
             reason = "steady_state"
+
+        # ─── Rule 7: CLARIFY EXHAUSTION ─────────────────────────
+        # If the system has been asking for clarification for too many
+        # consecutive turns and the user still hasn't provided clarity,
+        # escalate to SAFE_STOP. Evasion is itself a signal.
+        # "اللف نفسه إشارة" — dodging IS the red flag.
+        if (final_decision == "CLARIFY" and
+                state.current_decision == "CLARIFY" and
+                state.turns_in_state >= MAX_CLARIFY_TURNS):
+            final_decision = "SAFE_STOP"
+            held = False
+            reason = "clarify_exhausted"
 
         # ─── Update state ────────────────────────────────────────
         if final_decision != prev:
@@ -492,6 +510,35 @@ def _run_tests():
            "raw_decision": "PASS", "held": transitions > 3,
            "reason": f"{transitions} transitions"},
           "PASS", False)
+
+    # ─── Test 8: CLARIFY exhaustion — لف ودار ────────────────
+    print("\n📝 Test 8: CLARIFY exhaustion — evasion escalates to SAFE_STOP")
+    conv = "test_8"
+    controller.reset(conv)
+
+    r = controller.apply(conv, S=0.55, H=0.15, raw_decision="CLARIFY")
+    check("T8a: Enter CLARIFY (turn 1)", r, "CLARIFY", False)
+
+    r = controller.apply(conv, S=0.58, H=0.12, raw_decision="CLARIFY")
+    check("T8b: Still CLARIFY (turn 2)", r, "CLARIFY", False)
+
+    r = controller.apply(conv, S=0.56, H=0.14, raw_decision="CLARIFY")
+    check("T8c: 3rd CLARIFY → SAFE_STOP (exhausted)", r, "SAFE_STOP", False)
+
+    # ─── Test 9: CLARIFY resets if user provides clear input ──
+    print("\n📝 Test 9: CLARIFY resets when user clarifies properly")
+    conv = "test_9"
+    controller.reset(conv)
+
+    r = controller.apply(conv, S=0.55, H=0.15, raw_decision="CLARIFY")
+    check("T9a: Enter CLARIFY", r, "CLARIFY", False)
+
+    r = controller.apply(conv, S=0.55, H=0.15, raw_decision="CLARIFY")
+    check("T9b: Still CLARIFY (turn 2)", r, "CLARIFY", False)
+
+    # User provides a clear message → EXECUTE
+    r = controller.apply(conv, S=0.80, H=0.05, raw_decision="EXECUTE")
+    check("T9c: User clarifies → EXECUTE (need >0.75 due to ε)", r, "EXECUTE", False)
 
     # ─── Summary ────────────────────────────────────────────
     print(f"\n{'=' * 65}")

@@ -385,6 +385,30 @@ def get_domain_theta(domain: str | None) -> float | None:
 H_GATED_HARD_OVERRIDE = 0.7
 
 # ---------------------------------------------------------------------------
+# UNKNOWN TERRITORY DETECTION — "ما أعرف" (I don't know)
+#
+# When the system doesn't recognize input as close to ANY known pattern
+# (neither harmful nor constructive), it's in "unknown territory."
+# Instead of defaulting to EXECUTE (which could let harm through),
+# override to CLARIFY — the system admits it doesn't know.
+#
+# Root cause: anchors are the system's knowledge. If max_similarity to
+# both H anchors AND I anchors is below threshold, the system is judging
+# something it has never been taught about. Low H doesn't mean "safe" —
+# it means "I don't see harm I recognize." That's different.
+#
+# Architect insight (2026-06-22):
+#   "الانكورز لو مش موجود النتيجه تكون غلط لانه بيقارن الجمله بحاجه غلط"
+#   (If anchors aren't present, the result is wrong because it compares
+#    the sentence to the wrong thing and gives it the same judgment)
+#
+# The fix: if max_sim_H < threshold AND max_sim_I < threshold,
+# override EXECUTE → CLARIFY. Combined with hysteresis escalation
+# (MAX_CLARIFY_TURNS), repeated evasion → SAFE_STOP.
+# ---------------------------------------------------------------------------
+UNKNOWN_TERRITORY_THRESHOLD = 0.20  # max_similarity below this = unrecognized
+
+# ---------------------------------------------------------------------------
 # DECISION THRESHOLDS (verified in FN#077 — Test 3, 12/12 pass)
 # ---------------------------------------------------------------------------
 THRESHOLDS = [
@@ -721,6 +745,27 @@ class AATIFEngine:
             result["decision"] = "CLARIFY"
             ambiguity_applied = True
         result["ambiguity_override"] = ambiguity_applied
+
+        # UNKNOWN TERRITORY DETECTION
+        # If decision is EXECUTE but the system doesn't recognize the input
+        # as close to any known harm OR constructive intent pattern,
+        # override to CLARIFY. "ما أعرف" is safer than "آمن بالغلط".
+        #
+        # Logic: max_similarity is the cosine similarity to the NEAREST
+        # anchor. If even the nearest anchor is far away (below threshold),
+        # the system is operating outside its training — a blind spot.
+        #
+        # Only overrides EXECUTE: CLARIFY/SAFE_STOP/SAFE_FREEZE are
+        # already cautious enough. The danger is false EXECUTE.
+        unknown_territory = False
+        if result["decision"] == "EXECUTE":
+            max_sim_H = h_result.get("max_similarity", 1.0)
+            max_sim_I = i_result.get("max_similarity", 1.0)
+            if (max_sim_H < UNKNOWN_TERRITORY_THRESHOLD and
+                    max_sim_I < UNKNOWN_TERRITORY_THRESHOLD):
+                result["decision"] = "CLARIFY"
+                unknown_territory = True
+        result["unknown_territory"] = unknown_territory
 
         # JAILBREAK DETECTION (bidirectional):
         #
