@@ -36,6 +36,7 @@ from aatif_s_equation import (
     DOMAIN_CONFIG,
     H_GATED_HARD_OVERRIDE,
     sigmoid,
+    AATIFEngine,
 )
 
 
@@ -401,3 +402,61 @@ class TestDomainConfigInvariants:
         assert cfg["education"]["theta"] <= cfg["general"]["theta"]
         assert cfg["general"]["theta"] == cfg["tech"]["theta"] == cfg["ecommerce"]["theta"]
         assert cfg["general"]["theta"] <= cfg["creative"]["theta"]
+
+
+# ═══════════════════════════════════════════════════════════════
+# Test: M1 — domain is rejected (not silently ignored) in classic mode
+# ═══════════════════════════════════════════════════════════════
+#
+# Codex review 2026-06-22 (M1): compute() accepted `domain` in both
+# equation modes, but the classic equation S = σ(w₁·I + w₂·E − w₃·H)
+# has no θ parameter for domain to override. Passing domain in classic
+# mode silently dropped it — the same "silent fallback" failure mode that
+# get_domain_theta() guards against for unknown domains. The fix raises
+# ValueError. These tests bypass __init__ (AATIFEngine.__new__) because
+# the guard fires before any scorer is constructed, so they run without
+# the bge-m3 / Ollama backend.
+
+class TestDomainRejectedInClassicMode:
+    """domain in classic mode must fail loudly, not be silently ignored."""
+
+    def _bare_engine(self):
+        # Bypass __init__ — the M1 guard runs before scorers are touched.
+        return AATIFEngine.__new__(AATIFEngine)
+
+    def test_classic_with_known_domain_raises(self):
+        eng = self._bare_engine()
+        with pytest.raises(ValueError, match="only supported in gated mode"):
+            eng.compute("مرحبا", equation_mode="classic", domain="healthcare")
+
+    def test_classic_with_unknown_domain_raises(self):
+        """Even a typo'd domain must be rejected in classic mode."""
+        eng = self._bare_engine()
+        with pytest.raises(ValueError, match="only supported in gated mode"):
+            eng.compute("مرحبا", equation_mode="classic", domain="banana")
+
+    @pytest.mark.parametrize("domain", list(DOMAIN_CONFIG.keys()))
+    def test_classic_rejects_every_valid_domain(self, domain):
+        eng = self._bare_engine()
+        with pytest.raises(ValueError):
+            eng.compute("مرحبا", equation_mode="classic", domain=domain)
+
+    def test_classic_default_domain_none_does_not_raise_on_guard(self):
+        """domain=None in classic mode must pass the M1 guard (no ValueError
+        from the guard itself). We stop before scorers by patching them out."""
+        eng = self._bare_engine()
+
+        class _StubScorer:
+            def score(self, text):
+                return {"H": 0.0, "I": 0.0, "E": 0.0,
+                        "confidence": "high", "max_similarity": 0.9}
+
+        eng.h_scorer = _StubScorer()
+        eng.i_scorer = _StubScorer()
+        eng.e_scorer = _StubScorer()
+        from aatif_hysteresis import HysteresisController
+        eng.hysteresis = HysteresisController()
+        # Should not raise — domain is None, classic mode is valid.
+        result = eng.compute("مرحبا", equation_mode="classic")
+        assert result["equation_mode"] == "classic"
+        assert result["domain"] is None if "domain" in result else True

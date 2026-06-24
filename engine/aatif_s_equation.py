@@ -693,6 +693,20 @@ class AATIFEngine:
         if equation_mode not in ("classic", "gated"):
             raise ValueError(f"equation_mode must be 'classic' or 'gated', got {equation_mode!r}")
 
+        # M1 fix (Codex review 2026-06-22): domain is meaningless in classic
+        # mode. The classic equation S = σ(w₁·I + w₂·E − w₃·H) has no θ
+        # parameter for domain to override — θ only exists in the gated gate
+        # term. Silently ignoring a caller's domain here would be the same
+        # "silent fallback" failure mode that get_domain_theta() guards against
+        # for unknown domains. Fail loudly instead of dropping it.
+        if domain is not None and equation_mode == "classic":
+            raise ValueError(
+                f"domain={domain!r} is only supported in gated mode. "
+                f"Classic mode (S = σ(w₁·I + w₂·E − w₃·H)) has no θ parameter "
+                f"for domain to override. Use equation_mode='gated' for "
+                f"domain-parameterized governance, or omit domain."
+            )
+
         # Score each dimension
         h_result = self.h_scorer.score(text)
         i_result = self.i_scorer.score(text)
