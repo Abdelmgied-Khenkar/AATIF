@@ -735,14 +735,16 @@ class TestAuditTrail:
         assert any("truncated" in m.lower() for m in r.modifications)
 
     def test_protocol_missing_recorded(self, gate):
-        """Missing protocol keywords → recorded in modifications."""
+        """Missing EMERGENCY keywords + no instructions → blocked as fail-safe."""
         proto = MockProtocolResult(
             triggered=[MockTriggeredProtocol("EMERGENCY_PROTOCOL", "EMERGENCY")],
             highest_action="EMERGENCY",
         )
         text = "خذ باراسيتامول"
         r = gate.check(text, protocol_reading=proto)
-        assert any("Protocol EMERGENCY" in m for m in r.modifications)
+        # C3 fix: EMERGENCY without instructions → blocked (fail-safe)
+        assert r.blocked is True
+        assert "PROTOCOL_MISSING_EMERGENCY" in r.flags
 
     def test_clean_text_no_modifications(self, gate):
         """Clean text → empty modifications list."""

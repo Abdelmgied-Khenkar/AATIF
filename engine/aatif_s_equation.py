@@ -436,11 +436,8 @@ H_GUARD_THRESHOLD = 0.7
 # MATH
 # ---------------------------------------------------------------------------
 
-def sigmoid(x: float) -> float:
-    """Standard sigmoid σ(x) = 1 / (1 + e^(-x))"""
-    # Clamp to avoid overflow in math.exp
-    x = max(-500.0, min(500.0, x))
-    return 1.0 / (1.0 + math.exp(-x))
+# M7: sigmoid consolidated into aatif_math.py
+from aatif_math import sigmoid  # noqa: E402 — import after module-level constants
 
 
 # ---------------------------------------------------------------------------
@@ -766,8 +763,11 @@ class AATIFEngine:
         # already cautious enough. The danger is false EXECUTE.
         unknown_territory = False
         if result["decision"] == "EXECUTE":
-            max_sim_H = h_result.get("max_similarity", 1.0)
-            max_sim_I = i_result.get("max_similarity", 1.0)
+            # fail-safe: missing similarity = unrecognized → CLARIFY
+            # Default 0.0 means "if field is missing, treat as unrecognized"
+            # (opposite of the old 1.0 default which was fail-open)
+            max_sim_H = h_result.get("max_similarity", 0.0)
+            max_sim_I = i_result.get("max_similarity", 0.0)
             if (max_sim_H < UNKNOWN_TERRITORY_THRESHOLD and
                     max_sim_I < UNKNOWN_TERRITORY_THRESHOLD):
                 result["decision"] = "CLARIFY"

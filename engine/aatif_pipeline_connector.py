@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
 """
-AATIF Pipeline Connector — يربط المحرك الجديد بالبايبلاين الحالي
+AATIF Pipeline Connector — يربط المحافظ (Governor) بالبايبلاين الحالي
 
-Bridges the new AATIF Intent Engine (v9.7 math, dialect, emotion)
-with the existing aatif-sales-engine pipeline.
+C1+C2 FIX: Routes through AATIFGovernor — the single orchestrator that chains
+S(d) → P(d) → R(d) → memory → governed prompt → Output Gate — instead of the
+old regex-based AATIFIntentEngine. This resolves:
+
+  C1: "Two disjoint engines" — the Governor uses the semantic AATIFEngine
+      (bge-m3 embeddings + calibrated thresholds), not the regex IntentEngine.
+  C2: "Pipeline has no orchestrator" — the Governor IS the orchestrator.
 
 The old pipeline expects:
   - IntentResult with .to_plan_dict() → {surface_intent, hidden_intent, ...}
   - build_intent_result(text, state, business_type, relationship_context)
 
 This connector:
-  1. Runs the new AATIF Intent Engine (with NLP bridge when available)
-  2. Translates IntentReading → old IntentResult format (backward compatible)
-  3. Adds the new governance signals as extra fields
+  1. Runs the AATIFGovernor (full S→P→R→Gate semantic pipeline)
+  2. Falls back to old AATIFIntentEngine when Ollama is unavailable
+  3. Translates GovernedResponse → old IntentResult format (backward compatible)
+  4. Extends the `aatif` signals with the full Governor audit trail
 
 Usage in api_server.py — replace the old import:
     # OLD: from intent_engine import build_intent_result
     # NEW: from aatif_pipeline_connector import build_intent_result
 
 Everything downstream (reply_base_mapper, llm_bridge, output_gate) keeps working.
-The new signals (emotion, dialect, S/F/H, load_bearing) ride along as extra fields.
+The new signals (R style, P protocols, gate result) ride along as extra fields.
 
 Architect: Abdulmjeed Ibrahim Khenkar
 """
@@ -29,13 +35,16 @@ import os
 from dataclasses import dataclass, field
 from typing import Optional
 
-# ── Import the new Intent Engine ──
-# Try the AATIF folder first, then fall back to same directory
+# ── Import paths ──
 _AATIF_DIR = os.path.dirname(os.path.abspath(__file__))
 if _AATIF_DIR not in sys.path:
     sys.path.insert(0, _AATIF_DIR)
 
-from aatif_intent_engine import AATIFIntentEngine, IntentReading
+# ── C1+C2: Governor is the PRIMARY engine ──
+from aatif_governor import AATIFGovernor, GovernedResponse  # noqa: E402
+
+# ── Old IntentEngine as FALLBACK (when Ollama unavailable) ──
+from aatif_intent_engine import AATIFIntentEngine, IntentReading  # noqa: E402
 
 
 # ═══════════════════════════════════════════════════════════
@@ -123,6 +132,25 @@ class IntentResult:
                 "skills": r.skills_to_activate,
                 "deep_intent": r.deep_intent,
             }
+
+            # C1+C2: when the Governor handled this message, attach the full
+            # audit trail so downstream consumers can read P(d) protocols,
+            # R(d) style, gate result, and the governed prompt.
+            gov = getattr(self, "_gov_result", None)
+            if gov is not None:
+                base["aatif"]["engine"] = "governor"
+                base["aatif"]["stage_reached"] = gov.stage_reached
+                base["aatif"]["blocked"] = gov.blocked
+                if gov.r_result:
+                    base["aatif"]["r_style"] = gov.r_result.style_recommendation
+                    base["aatif"]["r_score"] = gov.r_result.r_score
+                if gov.p_result:
+                    base["aatif"]["p_highest_action"] = gov.p_result.highest_action
+                    base["aatif"]["p_has_protocols"] = gov.p_result.has_protocols
+                if gov.governed_prompt:
+                    base["aatif"]["governed_prompt"] = gov.governed_prompt
+            else:
+                base["aatif"]["engine"] = "intent_engine_fallback"
 
         return base
 
@@ -243,32 +271,174 @@ def _assess_confidence(reading: IntentReading):
 
 
 # ═══════════════════════════════════════════════════════════
-#  Main entry — drop-in replacement for old build_intent_result
+#  Engine management — Governor first, old engine as fallback
 # ═══════════════════════════════════════════════════════════
 
-_engine = None
+_governor = None
+_governor_init_attempted = False
 
-def _get_engine():
-    global _engine
-    if _engine is None:
-        _engine = AATIFIntentEngine(mode="safe_environment")
-    return _engine
+_fallback_engine = None
 
+
+def _get_governor():
+    """
+    Try to build an AATIFGovernor (requires Ollama + bge-m3).
+
+    Returns the Governor, or None if the semantic backend is unavailable.
+    Uses on_degraded="safe_stop" so the constructor itself won't raise —
+    but a degraded Governor is useless (everything returns SAFE_STOP), so
+    we treat degraded as "unavailable" and fall back to the regex engine.
+    """
+    global _governor, _governor_init_attempted
+    if _governor_init_attempted:
+        return _governor
+    _governor_init_attempted = True
+    try:
+        g = AATIFGovernor(on_degraded="safe_stop", verify_backend=True)
+        if g.is_degraded:
+            _governor = None
+        else:
+            _governor = g
+    except Exception:
+        _governor = None
+    return _governor
+
+
+def _get_fallback_engine():
+    """Old regex engine — always works, no Ollama required."""
+    global _fallback_engine
+    if _fallback_engine is None:
+        _fallback_engine = AATIFIntentEngine(mode="safe_environment")
+    return _fallback_engine
+
+
+# ═══════════════════════════════════════════════════════════
+#  GovernedResponse → IntentReading adapter
+# ═══════════════════════════════════════════════════════════
+# When the Governor handles a message, translate its rich output
+# into an IntentReading so the old pipeline format (IntentResult)
+# can be populated.
+
+# E score → named emotional state
+def _emotion_from_E(E: float) -> tuple:
+    """Map semantic E score to (emotional_state, confidence)."""
+    if E <= 0.15:
+        return ("carrying_weight", 0.85)
+    elif E <= 0.35:
+        return ("frustrated", 0.70)
+    elif E <= 0.55:
+        return ("clear", 0.60)
+    elif E <= 0.75:
+        return ("clear", 0.55)
+    else:
+        return ("excited", 0.70)
+
+
+def _governed_to_reading(text: str, gov: GovernedResponse) -> IntentReading:
+    """
+    Map a GovernedResponse → IntentReading for backward compatibility.
+
+    The Governor's s_result dict has H, I, E, S, decision etc.
+    We extract these and fill in IntentReading fields.
+    """
+    s = gov.s_result or {}
+    H = s.get("H", 0.5)
+    I = s.get("I", 0.5)
+    E = s.get("E", 0.5)
+    S = s.get("S", 0.5)
+
+    emotional_state, emotional_conf = _emotion_from_E(E)
+    load_bearing = E < 0.3
+
+    # Ambiguity: derive from the s_result flags
+    ambiguity = 0.0
+    if s.get("ambiguity_override"):
+        ambiguity = 0.6
+    elif s.get("unknown_territory"):
+        ambiguity = 0.5
+    elif gov.final_decision == "CLARIFY":
+        ambiguity = 0.4
+
+    # Mode: ANSWER / PROOF / STOP
+    decision = gov.final_decision
+    if decision in ("EXECUTE",):
+        mode = "ANSWER"
+    elif decision == "CLARIFY":
+        mode = "STOP"
+    else:
+        mode = "STOP"
+
+    # Decision reason
+    if gov.blocked:
+        reason = gov.block_reason
+    elif decision == "CLARIFY":
+        reason = "Ambiguity or low confidence — requesting clarification"
+    else:
+        reason = f"S(d)={S:.3f}, H={H:.3f} — cleared by Governor"
+
+    return IntentReading(
+        surface_request=text,
+        deep_intent="none",
+        emotional_state=emotional_state,
+        emotional_confidence=emotional_conf,
+        load_bearing=load_bearing,
+        cbrn_flag=bool(s.get("hard_override")),
+        override_flag=bool(s.get("jailbreak_escalated")),
+        governance_intact=True,
+        mode=mode,
+        ambiguity_score=ambiguity,
+        harm_score=H,
+        softening_factor=S,
+        directness=max(0.0, 1.0 - ambiguity),
+        skills_to_activate=[],
+        activation_evidence="Governor pipeline — skills not regex-activated",
+        dialect_detected=_detect_dialect_simple(text),
+        time_context="",
+        decision=decision,
+        decision_reason=reason,
+    )
+
+
+def _detect_dialect_simple(text: str) -> str:
+    """Lightweight dialect detection — no Ollama needed."""
+    import re
+    norm = text.strip()
+    gulf = [r"ابي\b", r"أبي\b", r"ابغ[ىا]", r"أبغ[ىا]", r"وش\b", r"يالله",
+            r"مرره?\b", r"حياك"]
+    egyptian = [r"عايز", r"ازاي", r"إزاي", r"عشان", r"كده", r"هوا\b"]
+    for pat in gulf:
+        if re.search(pat, norm):
+            return "saudi"
+    for pat in egyptian:
+        if re.search(pat, norm):
+            return "egyptian"
+    return "msa"
+
+
+# ═══════════════════════════════════════════════════════════
+#  Main entry — drop-in replacement for old build_intent_result
+# ═══════════════════════════════════════════════════════════
 
 def build_intent_result(incoming_text, state="", business_type="",
                         relationship_context=None):
     """
     Drop-in replacement for the old intent_engine.build_intent_result().
 
-    Runs the new AATIF Intent Engine, then wraps the result
-    in the old IntentResult format so the rest of the pipeline
-    (reply_base_mapper, llm_bridge, output_gate) keeps working.
+    C1+C2: Routes through AATIFGovernor (S→P→R→Gate semantic pipeline).
+    Falls back to old AATIFIntentEngine if Ollama/bge-m3 is unavailable.
     """
-    engine = _get_engine()
     relationship_context = relationship_context or {}
+    governor = _get_governor()
 
-    # Run the new engine
-    reading = engine.read(incoming_text, context=relationship_context)
+    if governor is not None:
+        # ── PRIMARY: Governor (semantic S→P→R→Gate pipeline) ──
+        gov_result = governor.process(incoming_text, domain="general")
+        reading = _governed_to_reading(incoming_text, gov_result)
+    else:
+        # ── FALLBACK: old regex engine (no Ollama) ──
+        engine = _get_fallback_engine()
+        reading = engine.read(incoming_text, context=relationship_context)
+        gov_result = None
 
     # Translate to old format
     surface = _detect_surface_intent(incoming_text, reading)
@@ -294,7 +464,7 @@ def build_intent_result(incoming_text, state="", business_type="",
         forbidden_moves=[],
     )
 
-    return IntentResult(
+    result = IntentResult(
         incoming_text=incoming_text,
         normalized_text=_normalize_text(incoming_text),
         state=state,
@@ -306,6 +476,10 @@ def build_intent_result(incoming_text, state="", business_type="",
         analysis_matrix=analysis_matrix,
         aatif_reading=reading,
     )
+    # Attach the full Governor result for downstream consumers that want the
+    # complete audit trail (R style, P protocols, gate result, governed prompt).
+    result._gov_result = gov_result
+    return result
 
 
 # Also expose normalize_text since api_server.py imports it
@@ -327,8 +501,11 @@ def demo():
         "واش كيفاش بزاف خويا",
     ]
 
+    governor = _get_governor()
+    engine_name = "Governor (semantic S→P→R→Gate)" if governor else "IntentEngine (regex fallback)"
+
     print("=" * 60)
-    print("  Pipeline Connector — يربط الجديد بالقديم")
+    print(f"  Pipeline Connector — {engine_name}")
     print("=" * 60)
 
     for text in cases:
@@ -343,14 +520,18 @@ def demo():
         print(f"  handling_mode:  {plan['handling_mode']}")
         print(f"  confidence:     {plan['intent_confidence']}")
         if aatif:
-            print(f"  ── AATIF ──")
+            print(f"  ── AATIF ({aatif.get('engine', '?')}) ──")
             print(f"  emotion:   {aatif['emotional_state']} (load={aatif['load_bearing']})")
             print(f"  dialect:   {aatif['dialect']}")
             print(f"  decision:  {aatif['decision']}")
-            print(f"  S/F/H:    S={aatif['softening']:.2f} H={aatif['harm']:.2f}")
+            print(f"  S/H:      S={aatif['softening']:.2f} H={aatif['harm']:.2f}")
+            if aatif.get("r_style"):
+                print(f"  R style:   {aatif['r_style']} (R={aatif.get('r_score', '?')})")
+            if aatif.get("stage_reached"):
+                print(f"  stage:     {aatif['stage_reached']}")
 
     print(f"\n{'=' * 60}")
-    print("  المحرك الجديد يشتغل — والقديم ما يتأثر")
+    print("  المحافظ يشتغل — Governor routes the full pipeline")
     print(f"{'=' * 60}")
 
 

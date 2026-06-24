@@ -728,10 +728,12 @@ class AATIFIntentEngine:
             return False
 
     # ─── Sigmoid (for S/F equations) ────────────────────
+    # M7: delegates to shared aatif_math.sigmoid
 
     @staticmethod
     def _sigmoid(x):
-        return 1.0 / (1.0 + math.exp(-x))
+        from aatif_math import sigmoid as _sig
+        return _sig(x)
 
     # ─── Mode Classification ────────────────────────────
 

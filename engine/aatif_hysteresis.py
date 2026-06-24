@@ -96,7 +96,7 @@ class HysteresisState:
 
     Stored per conversation (keyed by conversation_id).
     """
-    current_decision: str = "EXECUTE"   # last stable decision
+    current_decision: Optional[str] = None  # None = first turn (no prior state)
     current_S: float = 1.0              # last S value
     current_H: float = 0.0              # last H value
     turns_in_state: int = 0             # how long in this state
@@ -178,12 +178,34 @@ class HysteresisController:
         """
         state = self._get_state(conversation_id)
         prev = state.current_decision
+
+        # ─── Rule 0: First turn — no prior state, pass through ──
+        # On the very first turn of a conversation, current_decision
+        # is None (sentinel). The system has no prior state to hold,
+        # so the raw scored decision passes through without hysteresis.
+        # This prevents a phantom "EXECUTE" initial state from
+        # suppressing a genuine first-turn CLARIFY.
+        if prev is None:
+            state.current_decision = raw_decision
+            state.turns_in_state = 1
+            state.entered_at = time.time()
+            state.current_S = S
+            state.current_H = H
+            return {
+                "decision": raw_decision,
+                "raw_decision": raw_decision,
+                "held": False,
+                "reason": "first_turn",
+                "turns_in_state": 1,
+                "previous_state": None,
+            }
+
         prev_severity = SEVERITY.get(prev, 0)
         raw_severity = SEVERITY.get(raw_decision, 0)
 
         final_decision = raw_decision
         held = False
-        reason = "first_turn" if state.turns_in_state == 0 else "no_change"
+        reason = "no_change"
 
         # ─── Rule 1: Fail-closed states never auto-exit ─────────
         if prev in FAIL_CLOSED and not state.cleared:

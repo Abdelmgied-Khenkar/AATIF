@@ -568,8 +568,8 @@ def test_custom_weights():
 
 
 def test_zero_weights_gives_sigmoid_zero():
-    """All weights zero → R = σ(0) = 0.5."""
-    r_eq = REquation(weights={"w3": 0.0, "w4": 0.0, "w5": 0.0, "w6": 0.0})
+    """All weights zero AND bias zero → R = σ(0) = 0.5."""
+    r_eq = REquation(weights={"w3": 0.0, "w4": 0.0, "w5": 0.0, "w6": 0.0, "bias": 0.0})
     reading = r_eq.compute("anything", "general")
     assert abs(reading.r_score - 0.5) < 0.001
 

@@ -27,9 +27,14 @@ reference levels, NOT a nearest-neighbor flip. That keeps H continuous
 from __future__ import annotations
 import numpy as np
 
+# M7: shared config — single source of truth for embedding settings
+from aatif_embeddings import (
+    OllamaBackend as _OllamaShared,
+    USE_OLLAMA,
+    OLLAMA_EMBED_MODEL,
+)
+
 USE_EMBEDDINGS = False  # flip to True after: pip install sentence-transformers
-USE_OLLAMA = True       # uses local Ollama at 127.0.0.1:11434 (preferred if running)
-OLLAMA_EMBED_MODEL = "bge-m3"  # best Arabic on Ollama; run once: ollama pull bge-m3
 
 # ---------------------------------------------------------------------------
 # REFERENCE ANCHORS
@@ -384,49 +389,8 @@ class _EmbeddingBackend:
         return (self.emb @ q[0])
 
 
-class _OllamaBackend:
-    """Local Ollama embeddings — no pip installs, uses your running daemon.
-    Setup once:  ollama pull bge-m3
-    """
-    def __init__(self, texts):
-        import json, urllib.request
-        self.url = "http://127.0.0.1:11434/api/embed"
-        self.model = OLLAMA_EMBED_MODEL
-        self.emb = self._embed(texts)
-
-    def _embed(self, texts):
-        import json, urllib.request
-        body = json.dumps({"model": self.model, "input": texts}).encode()
-        req = urllib.request.Request(
-            self.url, data=body, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=120) as r:
-            data = json.loads(r.read())
-        m = np.array(data["embeddings"], dtype=float)
-        # Safe normalization: avoid divide-by-zero for empty embeddings
-        norms = np.linalg.norm(m, axis=1, keepdims=True)
-        norms = np.where(norms == 0, 1.0, norms)
-        m = m / norms
-        # Replace any NaN/inf from bad embeddings with zeros
-        m = np.nan_to_num(m, nan=0.0, posinf=0.0, neginf=0.0)
-        return m
-
-    def sim(self, text):
-        q = self._embed([text])[0]
-        # Defensive: clean and unit-normalize the QUERY vector BEFORE the
-        # dot product (same pattern as __init__/_embed for anchors), so a
-        # genuinely bad embedding (inf/NaN/zero norm) can't poison the result.
-        q = np.nan_to_num(q, nan=0.0, posinf=0.0, neginf=0.0)
-        qn = np.linalg.norm(q)
-        if qn != 0:
-            q = q / qn
-        # NOTE: even with finite, unit-normalized inputs, NumPy's matmul ufunc
-        # can raise SPURIOUS "divide by zero / overflow / invalid value
-        # encountered in matmul" RuntimeWarnings on some BLAS builds — the
-        # computed result is still correct and finite. Suppress those bogus
-        # FPU flags here rather than letting them spam every score() call.
-        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
-            sims = self.emb @ q
-        return np.nan_to_num(sims, nan=0.0, posinf=0.0, neginf=0.0)
+# M7: OllamaBackend consolidated into aatif_embeddings.py
+_OllamaBackend = _OllamaShared
 
 
 class SemanticHarmScorer:
@@ -444,11 +408,29 @@ class SemanticHarmScorer:
                 self.backend_name = f"ollama:{OLLAMA_EMBED_MODEL}"
                 return
             except Exception as e:
-                print(f"[warn] Ollama unavailable ({e}); falling back.")
+                # FAIL-SAFE: do NOT silently fall back to TF-IDF.
+                # All thresholds (θ, confidence cuts, unknown territory)
+                # are calibrated on bge-m3 cosine distributions. TF-IDF
+                # char-n-grams have a completely different distribution,
+                # so scores would be meaningless — a safety system cannot
+                # operate on uncalibrated scores.
+                # I and E scorers already RAISE on embedding failure;
+                # H must do the same for consistency and safety.
+                raise RuntimeError(
+                    f"AATIF H scorer requires calibrated embeddings "
+                    f"(Ollama/bge-m3) but Ollama is unavailable: {e}. "
+                    f"All safety thresholds are calibrated on bge-m3 — "
+                    f"operating without it would produce uncalibrated "
+                    f"scores. Start Ollama with: ollama serve && ollama pull bge-m3"
+                ) from e
         if USE_EMBEDDINGS:
             self.backend = _EmbeddingBackend(self.texts)
             self.backend_name = "sentence-transformers"
         else:
+            # TF-IDF is only used when BOTH Ollama and sentence-transformers
+            # are explicitly disabled (USE_OLLAMA=False, USE_EMBEDDINGS=False).
+            # This is a development-only mode for validating the METHOD,
+            # not for production safety scoring.
             self.backend = _TfidfBackend(self.texts)
 
     # Confidence thresholds based on max cosine similarity

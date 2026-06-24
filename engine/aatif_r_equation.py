@@ -57,10 +57,8 @@ from typing import Optional
 #  Math — same sigmoid as S equation
 # ═══════════════════════════════════════════════════════════
 
-def sigmoid(x: float) -> float:
-    """Standard sigmoid σ(x) = 1 / (1 + e^(-x))"""
-    x = max(-500.0, min(500.0, x))
-    return 1.0 / (1.0 + math.exp(-x))
+# M7: sigmoid consolidated into aatif_math.py
+from aatif_math import sigmoid  # noqa: E402
 
 
 # ═══════════════════════════════════════════════════════════
@@ -72,6 +70,11 @@ DEFAULT_WEIGHTS = {
     "w4": 1.5,   # voice weight
     "w5": 0.8,   # gap weight
     "w6": 2.0,   # domain weight — highest because domain matters most
+    "bias": -2.65,  # negative bias to center sigmoid operating point
+    # Without bias: z_min ≈ 1.5, z_typ ≈ 2.65 → σ(z) always 0.82-0.95
+    # (stuck in "casual" band). With bias = -(w3+w4+w5+w6)*0.5 = -2.65,
+    # mid-range inputs (all signals ~0.5) give z ≈ 0 → σ(0) = 0.5
+    # ("balanced"), allowing the full formal→casual range to be reached.
 }
 
 
@@ -240,6 +243,7 @@ class REquation:
         self.w4 = float(w["w4"])  # voice
         self.w5 = float(w["w5"])  # gap
         self.w6 = float(w["w6"])  # domain
+        self.bias = float(w["bias"])  # centering offset
 
     # ── T signal (time) ──
 
@@ -492,11 +496,14 @@ class REquation:
         g_signal = self.compute_g_signal(gap_seconds)
         d_signal = self.compute_d_signal(domain)
 
-        # R equation — weighted sum through sigmoid
+        # R equation — weighted sum through sigmoid with centering bias
+        # z = w₃·T + w₄·V + w₅·G + w₆·D + bias
+        # bias centers the sigmoid so mid-range inputs → R ≈ 0.5 (balanced)
         z = (self.w3 * t_signal +
              self.w4 * v_signal +
              self.w5 * g_signal +
-             self.w6 * d_signal)
+             self.w6 * d_signal +
+             self.bias)
         r_raw = sigmoid(z)
 
         # Gate review — may lower R for sensitive domains

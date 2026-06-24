@@ -610,6 +610,21 @@ class AATIFOutputGate:
 
         # Check each triggered action for required keywords
         for action in triggered_actions:
+            # ─── BLOCK: hard block — response must NOT reach user ───
+            # When P(d) says BLOCK, the response is blocked entirely.
+            # No keywords needed — BLOCK means BLOCK.
+            if action == "BLOCK":
+                reading.blocked = True
+                reading.passed = False
+                reading.block_reason = (
+                    "P(d) protocol triggered BLOCK — "
+                    "response cannot be sent to user"
+                )
+                reading.flags.append("PROTOCOL_BLOCK_ENFORCED")
+                reading.protocol_compliance["BLOCK"] = True
+                reading.cleaned_text = ""
+                return
+
             required_patterns = _RE_PROTOCOL_KEYWORDS.get(action, [])
             if not required_patterns:
                 reading.protocol_compliance[action] = True
@@ -621,10 +636,61 @@ class AATIFOutputGate:
 
             if not found:
                 reading.flags.append(f"PROTOCOL_MISSING_{action}")
-                reading.modifications.append(
-                    f"Protocol {action} was triggered but response lacks "
-                    f"required keywords"
-                )
+                # ─── EMERGENCY: inject protocol instructions ───────
+                # If P(d) flagged EMERGENCY but the LLM response lacks
+                # emergency keywords, the gate INJECTS the protocol's
+                # combined instructions. Missing emergency info is
+                # dangerous — we prepend it rather than just flagging.
+                if action == "EMERGENCY" and protocol_reading is not None:
+                    emergency_instructions = self._extract_emergency_instructions(
+                        protocol_reading
+                    )
+                    if emergency_instructions:
+                        reading.cleaned_text = (
+                            emergency_instructions + "\n\n" + text
+                        )
+                        reading.modifications.append(
+                            f"EMERGENCY instructions injected — LLM response "
+                            f"lacked required emergency keywords"
+                        )
+                    else:
+                        # No instructions available — block as fail-safe
+                        reading.blocked = True
+                        reading.passed = False
+                        reading.block_reason = (
+                            "P(d) triggered EMERGENCY but response lacks "
+                            "emergency keywords and no instructions available"
+                        )
+                        reading.cleaned_text = ""
+                        return
+                else:
+                    reading.modifications.append(
+                        f"Protocol {action} was triggered but response lacks "
+                        f"required keywords"
+                    )
+
+    # ───────────────────────────────────────────────────
+    #  Helper: extract emergency instructions from P(d)
+    # ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _extract_emergency_instructions(protocol_reading) -> str:
+        """
+        Extract combined_instructions from P(d) EMERGENCY protocols.
+
+        Looks through triggered protocols for EMERGENCY action and
+        returns the combined_instructions text to inject.
+        """
+        if hasattr(protocol_reading, "triggered"):
+            for proto in protocol_reading.triggered:
+                action = getattr(proto, "action", None)
+                if action == "EMERGENCY":
+                    instructions = getattr(proto, "combined_instructions", "")
+                    if instructions:
+                        return instructions
+        # Fallback: check for a top-level combined_instructions
+        instructions = getattr(protocol_reading, "combined_instructions", "")
+        return instructions or ""
 
     # ───────────────────────────────────────────────────
     #  Layer 5: Response Quality Guards
