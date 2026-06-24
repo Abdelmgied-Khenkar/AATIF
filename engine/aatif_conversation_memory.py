@@ -17,9 +17,11 @@ What gets remembered:
   - Topics discussed
   - What عاطف decided and why (EXECUTE/CLARIFY/STOP)
 
-What does NOT get stored:
-  - Raw message text (privacy — we remember meaning, not words)
-  - Personal data beyond what's needed for the conversation
+Privacy note:
+  - Session turns store message text in RAM for context window
+  - Text is NOT persisted to disk — only emotional arcs and metadata
+    are saved to persistent memory (JSON)
+  - Personal data beyond what's needed for the conversation is not stored
 
 Philosophy:
   Memory in AATIF is not a database — it's حافظة (a keeper).
