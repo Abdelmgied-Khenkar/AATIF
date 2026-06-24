@@ -40,7 +40,7 @@
 \maketitle
 
 \begin{abstract}
-We present AATIF, a mathematical governance framework for large language model safety that provides an explicit, interpretable safety equation with non-compensability by construction. The core governance function $S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]$ fuses three independent perception channels---semantic harm proximity ($H$), intent classification ($I$), and emotional load ($E$)---through a multiplicative gate structure that prevents benign intent from compensating for detected harm. Unlike trained classifiers, AATIF requires zero training data, operating through 169 curated semantic anchors for harm detection with cosine similarity scoring via multilingual embeddings (bge-m3). The framework treats Arabic as a first-class semantic input, with 35 dialect-hyperbole disambiguation anchors to prevent figurative speech from triggering false harm signals. Evaluated against HarmBench (236 behaviors) and MultiJail (75 prompts), AATIF achieves 74.3\% safety-category detection with 100\% on chemical/biological threats, and Arabic outperforms English on identical harmful prompts (74.7\% vs 69.3\%), validating the Arabic-first design. The system includes hysteresis control for decision stability, unconditional CBRN safety gates, and four tunable mode profiles calibrated via A/B testing (in-sample $F_1 = 0.984$ on 54 cases; held-out $F_1 = 0.9615$ on 56 unseen cases after anchor refinement). A test suite of 437 deterministic test cases (320 test functions expanded via parametrization) ensures mathematical correctness. AATIF combines, for the first time in a single deployable system, a closed-form multiplicative governance equation with non-compensability by construction (supplemented by an external hard override for absolute high-harm refusal), Arabic dialect-aware anchor scoring, and zero-fine-tuning extensibility, designed for human-over-the-loop governance.
+We present AATIF, a mathematical governance framework for large language model safety that provides an explicit, interpretable safety equation with non-compensability by construction. The core governance function $S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta(d)))]$ fuses three independent perception channels---semantic harm proximity ($H$), intent classification ($I$), and emotional load ($E$)---through a multiplicative gate structure that prevents benign intent from compensating for detected harm. Unlike trained classifiers, AATIF requires zero training data, operating through 249 curated semantic anchors ($H{=}171$, $I{=}46$, $E{=}32$) with cosine similarity scoring via multilingual embeddings (bge-m3). The harm threshold $\theta$ is domain-parameterized---$\theta(d)$ ranges from 0.25 (healthcare) to 0.50 (creative)---allowing the same system to be stricter where consequences are severe and more permissive where expression freedom matters. The framework treats Arabic as a first-class semantic input, with 31 dialect-hyperbole disambiguation anchors to prevent figurative speech from triggering false harm signals. Beyond the safety equation, AATIF implements a full governance pipeline: $S(d)$ (safety scoring) $\to$ $P(d)$ (domain-specific deterministic protocols) $\to$ $R(d)$ (response style adaptation) $\to$ LLM generation $\to$ Output Gate (final safety and quality verification), orchestrated by a Governor module that provides a complete audit trail. Evaluated against HarmBench (236 behaviors) and MultiJail (75 prompts), AATIF achieves 74.3\% safety-category detection with 100\% on chemical/biological threats, and Arabic outperforms English on identical harmful prompts (74.7\% vs 69.3\%), validating the Arabic-first design. The system includes hysteresis control for decision stability, unconditional CBRN safety gates, and four tunable mode profiles calibrated via A/B testing (in-sample $F_1 = 0.984$ on 54 cases; held-out $F_1 = 0.9615$ on 56 unseen cases after anchor refinement). A test suite of 790 deterministic tests ensures mathematical correctness across all modules. AATIF combines, for the first time in a single deployable system, a closed-form multiplicative governance equation with non-compensability by construction (supplemented by an external hard override for absolute high-harm refusal), Arabic dialect-aware anchor scoring, and zero-fine-tuning extensibility, designed for human-over-the-loop governance.
 \end{abstract}
 
 \noindent\textbf{Keywords:} LLM safety, governance equation, Arabic NLP, multiplicative gating, non-compensability, semantic anchors
@@ -66,15 +66,15 @@ Arabic dialect awareness is either absent or retrofitted onto English-first arch
 This paper presents AATIF (Architected Adaptive Thoughts \& Intelligence Frameworks), a governance framework that addresses all three gaps with a single mathematical structure. The core contribution is the \emph{S~equation}:
 
 \begin{equation}
-S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]
+S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta(d)))]
 \label{eq:s_intro}
 \end{equation}
 
-\noindent where $H$ is semantic harm proximity, $I$ is intent classification, $E$ is emotional load, $\sigma$ is the logistic sigmoid, and $\theta$ is the harm threshold. The multiplicative structure ensures \emph{non-compensability}: when $H$ exceeds $\theta$, the harm gate drives $S$ toward zero regardless of how benign the intent or calm the emotional state. A hard override ($H > 0.7 \Rightarrow$ \textsc{safe\_freeze}) provides an absolute safety floor independent of parameter calibration.
+\noindent where $H$ is semantic harm proximity, $I$ is intent classification, $E$ is emotional load, $\sigma$ is the logistic sigmoid, and $\theta(d)$ is a domain-parameterized harm threshold (Section~\ref{sec:domain}). The multiplicative structure ensures \emph{non-compensability}: when $H$ exceeds $\theta$, the harm gate drives $S$ toward zero regardless of how benign the intent or calm the emotional state. A hard override ($H > 0.7 \Rightarrow$ \textsc{safe\_freeze}) provides an absolute safety floor independent of parameter calibration.
 
-AATIF originated from 73 governance conjectures derived through a year of sustained observation across four LLM platforms (ChatGPT, Claude, Gemini, DeepSeek), documented in 78 field notes available as supplementary material. This paper operationalizes one of those conjectures---Conjecture~\#063, that governance operates through probabilistic constraint density rather than rule retrieval---into a computational engine with an explicit mathematical formulation, a comprehensive test suite of 437 deterministic tests, and benchmark evaluation against HarmBench and MultiJail.
+AATIF originated from 73 governance conjectures derived through a year of sustained observation across four LLM platforms (ChatGPT, Claude, Gemini, DeepSeek), documented in 78 field notes available as supplementary material. This paper operationalizes one of those conjectures---Conjecture~\#063, that governance operates through probabilistic constraint density rather than rule retrieval---into a computational engine with an explicit mathematical formulation, a comprehensive test suite of 790 deterministic tests, and benchmark evaluation against HarmBench and MultiJail.
 
-The remainder of this paper is structured as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:equation} presents the S~equation, its three scorers, the hysteresis controller, safety gates, and mode profiles. Section~\ref{sec:arabic} describes the Arabic-first design. Section~\ref{sec:experiments} reports experimental evaluation. Section~\ref{sec:discussion} discusses contributions and limitations. Section~\ref{sec:conclusion} concludes.
+The remainder of this paper is structured as follows. Section~\ref{sec:related} reviews related work. Section~\ref{sec:equation} presents the S~equation, its three scorers, the hysteresis controller, safety gates, mode profiles, domain parameterization, and the full governance pipeline ($S(d) \to P(d) \to R(d) \to$ LLM $\to$ Output Gate). Section~\ref{sec:arabic} describes the Arabic-first design. Section~\ref{sec:experiments} reports experimental evaluation. Section~\ref{sec:discussion} discusses contributions and limitations. Section~\ref{sec:conclusion} concludes.
 
 
 % ════════════════════════════════════════════════════════════════
@@ -111,21 +111,21 @@ Two benchmark suites are relevant to evaluating AATIF. HarmBench \citep{harmbenc
 The AATIF governance engine computes a composite safety score $S \in [0,1]$ from three independent perceptual channels:
 
 \begin{equation}
-S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot \underbrace{[1 - \sigma(\alpha(H - \theta))]}_{\text{harm gate}}
+S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot \underbrace{[1 - \sigma(\alpha(H - \theta(d)))]}_{\text{harm gate}}
 \label{eq:s_equation}
 \end{equation}
 
-\noindent This equation is a designed structure, not an empirically discovered law. Its form was chosen so that a single desirable property---non-compensability between harm and the other channels---holds by construction. We describe the structure, state precisely what it does and does not guarantee, and treat its parameters as hand-set design choices pending calibration.
+\noindent where $\theta(d)$ is a domain-parameterized harm threshold (Section~\ref{sec:domain}). This equation is a designed structure, not an empirically discovered law. Its form was chosen so that a single desirable property---non-compensability between harm and the other channels---holds by construction. We describe the structure, state precisely what it does and does not guarantee, and treat its parameters as hand-set design choices pending calibration.
 
 \paragraph{Quality term.} $\sigma(w_1 \cdot I + w_2 \cdot E) \in (0,1)$ assesses how clear and benign the request is. Intent $I$ captures harmful-planning signals (higher $I$ = more benign); emotional load $E$ captures distress or escalation markers (higher $E$ = calmer). The two are combined additively inside the sigmoid, by deliberate contrast with the harm term: intent and emotion are treated as mutually substitutable evidence about request quality (strong benign intent can reasonably offset mild distress), whereas harm is not allowed to be substitutable at all. The weights $w_1 = 2.0$ and $w_2 = 1.5$ encode the design judgment that intent matters more than emotional state; these are hand-set values, not optimized parameters, and Section~6.2 lists their calibration as future work.
 
-\paragraph{Harm gate.} $[1 - \sigma(\alpha(H - \theta))] \in (0,1)$ is a soft gate controlled by semantic harm proximity $H$. The steepness $\alpha = 10$ controls transition sharpness; the threshold $\theta = 0.40$ sets where the gate begins to close. When $H \ll \theta$ the gate is open ($\approx 1$); when $H \gg \theta$ it closes ($\approx 0$), driving $S$ toward zero.
+\paragraph{Harm gate.} $[1 - \sigma(\alpha(H - \theta(d)))] \in (0,1)$ is a soft gate controlled by semantic harm proximity $H$. The steepness $\alpha = 10$ controls transition sharpness; the threshold $\theta(d)$ sets where the gate begins to close and is parameterized by the application domain $d$ (Section~\ref{sec:domain}), with a default of $\theta = 0.40$ for general use. When $H \ll \theta(d)$ the gate is open ($\approx 1$); when $H \gg \theta(d)$ it closes ($\approx 0$), driving $S$ toward zero.
 
 \paragraph{Non-compensability (what the structure guarantees).} Because $S$ is the product of the quality term and the harm gate, a rising $H$ suppresses $S$ multiplicatively regardless of how high $I$ or $E$ are: no combination of benign intent and calm emotion can restore $S$ once the harm gate is closing. This is the property additive aggregation ($S = aH + bI + cE$) lacks, where sufficiently high $I$ and $E$ always offset moderate $H$. We state the property precisely: as $H$ increases, the gate term decreases monotonically toward 0, so $S$ is bounded above by the gate term and is driven arbitrarily close to 0. Both factors are strictly positive (the sigmoid never reaches 0 or 1), so $S$ never equals exactly 0 by the equation alone---the gate produces strong attenuation, not a mathematical zero.
 
 \paragraph{The absolute floor is external, not equational.} Because the equation alone cannot force $S$ to exactly 0, the absolute safety guarantee is provided outside the equation by a hard override: when $H > 0.7$, the system triggers \textsc{safe\_freeze} regardless of $S$. This override is imposed externally and is not derived from the equation; it ensures no parameter tuning can lift output above the safety floor in the high-harm regime. We are explicit about this division of labor: the equation provides interpretable, monotonic gating; the hard override provides the absolute guarantee. Claims of ``guaranteed'' refusal in the high-harm regime rest on the override, not on the closed form.
 
-\paragraph{Sigmoid symmetry.} The harm gate satisfies $[1 - \sigma(\alpha(H - \theta))] = \sigma(\alpha(\theta - H))$, verified formally, ensuring the gate is centered exactly at $\theta$ and monotonically decreasing in $H$.
+\paragraph{Sigmoid symmetry.} The harm gate satisfies $[1 - \sigma(\alpha(H - \theta(d)))] = \sigma(\alpha(\theta(d) - H))$, verified formally, ensuring the gate is centered exactly at $\theta(d)$ and monotonically decreasing in $H$.
 
 \paragraph{Decision mapping.} The continuous score $S$ maps to four discrete actions:
 
@@ -153,9 +153,9 @@ $H > 0.7$ & \textsc{safe\_freeze} & Unconditional refusal (hard override) \\
 
 Each scorer operates independently, producing a continuous score in $[0,1]$ through cosine similarity against curated semantic anchors using multilingual embeddings (bge-m3 via Ollama). A TF-IDF character n-gram fallback is available for offline operation without GPU.
 
-\paragraph{H scorer---Semantic Harm Proximity (\emph{har\=arat al-kalima}).} The H scorer maintains 169 curated anchors spanning violence, weapons, self-harm, cybercrime, hate speech, and chemical/biological categories. Each anchor is a short phrase representing a harm concept. Input text is embedded via bge-m3 and compared against all anchors via cosine similarity. \emph{Top-$K$ aggregation} ($K=3$) averages the three highest-similarity scores, preventing any single anchor from dominating the result. This mitigates the \emph{anchor contamination} effect, in which one high-similarity anchor inflates the score despite low agreement across the anchor set. The H scorer includes 35 dialect-specific hyperbole anchors scored at $H \leq 0.10$, providing semantic ``counter-gravity'' for figurative Arabic expressions (Section~\ref{sec:arabic}).
+\paragraph{H scorer---Semantic Harm Proximity (\emph{har\=arat al-kalima}).} The H scorer maintains 171 curated anchors spanning violence, weapons, self-harm, cybercrime, hate speech, and chemical/biological categories. Each anchor is a short phrase representing a harm concept. Input text is embedded via bge-m3 and compared against all anchors via cosine similarity. \emph{Top-$K$ aggregation} ($K=3$) averages the three highest-similarity scores, preventing any single anchor from dominating the result. This mitigates the \emph{anchor contamination} effect, in which one high-similarity anchor inflates the score despite low agreement across the anchor set. The H scorer includes 31 dialect-specific hyperbole anchors scored at $H \leq 0.05$, providing semantic ``counter-gravity'' for figurative Arabic expressions (Section~\ref{sec:arabic}).
 
-\paragraph{I scorer---Intent Classification (\emph{al-niyya}).} The I scorer maintains 44 intent anchors organized into categories: informational, transactional, navigational, creative, and harmful-planning. Input is classified via top-$K$ softmax over anchor similarities, with an out-of-distribution (OOD) guard that flags inputs dissimilar to all intent categories. Confidence bands map similarity scores to discrete confidence levels.
+\paragraph{I scorer---Intent Classification (\emph{al-niyya}).} The I scorer maintains 46 intent anchors organized into categories: informational, transactional, navigational, creative, and harmful-planning. Input is classified via top-$K$ softmax over anchor similarities, with an out-of-distribution (OOD) guard that flags inputs dissimilar to all intent categories. Confidence bands map similarity scores to discrete confidence levels.
 
 \paragraph{E scorer---Emotional Load (\emph{al-shu`\=ur}).} The E scorer maintains 32 emotion anchors covering distress, escalation, calmness, and neutral states. Higher $E$ indicates calmer emotional state; distress and escalation indicators produce lower $E$ scores, which reduce $S$ and may shift the decision toward \textsc{clarify}. The E scorer partially implements a \emph{textual spectrogram}---a reconstruction of emotional information from textual features when prosodic cues are absent (Section~\ref{sec:maqam}).
 
@@ -165,6 +165,18 @@ All three scorers are deterministic at test time: given the same input and ancho
 \subsection{Hysteresis Controller}
 
 When $S$ hovers near a decision boundary, the system can produce unstable decision sequences---oscillating between \textsc{execute} and \textsc{clarify} on successive evaluations of similar inputs. The hysteresis controller addresses this by introducing entry/exit threshold offsets: transitioning from \textsc{execute} to \textsc{clarify} requires $S$ to fall below the boundary by offset $\varepsilon$, while returning to \textsc{execute} requires $S$ to rise above it by the same margin. This is the ``AC thermostat'' principle: a heating system that turns on at 68\textdegree{}F and off at 72\textdegree{}F is more stable than one that toggles at exactly 70\textdegree{}F. The controller maintains per-session state, ensuring independent hysteresis tracking across concurrent user conversations.
+
+
+\subsection{Epistemic Humility: Unknown Territory and CLARIFY Exhaustion}
+\label{sec:humility}
+
+Two mechanisms encode a principle of epistemic humility: the system should admit ``I do not recognize this'' rather than defaulting to a permissive decision, and it should treat persistent evasion as a signal in its own right. The two connect into a single defensive pathway---an unrecognized input prompts a question, and if the user repeatedly dodges that question, the system stops.
+
+\paragraph{Unknown territory detection.} The anchor-based scorers measure proximity to known reference examples. When even the \emph{nearest} anchor is far away, the input lies outside the system's curated experience---a blind spot where a confident decision is unjustified. AATIF makes this explicit: if the maximum cosine similarity to any harm anchor and to any intent anchor both fall below a threshold ($\textsc{unknown\_territory\_threshold} = 0.20$) and the S~equation has nonetheless produced an \textsc{execute} decision, the decision is overridden to \textsc{clarify}. The override is deliberately asymmetric---it acts only on \textsc{execute}, because the danger of operating in unrecognized territory is a \emph{false} \textsc{execute}; the more cautious decisions (\textsc{clarify}, \textsc{safe\_stop}, \textsc{safe\_freeze}) are already conservative and are left untouched. The system thus refuses to assume safety merely because no harm anchor matched: low similarity to harm anchors is treated as ignorance, not as evidence of benignity.
+
+\paragraph{CLARIFY exhaustion.} Asking for clarification is only useful if it terminates. If a user is repeatedly met with \textsc{clarify} yet never supplies the missing context, the evasion itself becomes informative---in the Architect's framing, \emph{al-laff huwa al-ish\=ara} (``the dodging is the signal''). The hysteresis controller therefore enforces a bound: after the number of consecutive turns held in \textsc{clarify} reaches $\textsc{max\_clarify\_turns} = 2$, the next \textsc{clarify} is escalated to \textsc{safe\_stop} rather than asked again. This prevents an indefinite clarification loop from being used to wear down the gate, and it converts sustained non-cooperation into a protective stop.
+
+Together these mechanisms close a loop: an unrecognized input is routed to \textsc{clarify} rather than executed, and if the user evades clarification past the limit, the system escalates to \textsc{safe\_stop}---unknown input $\rightarrow$ ask $\rightarrow$ if evaded, block.
 
 
 \subsection{Safety Gates: Law $\Omega$ and Law $\Xi$}
@@ -238,6 +250,81 @@ Crucially, the hard override ($H > 0.7 \Rightarrow$ \textsc{safe\_freeze}) is do
 \paragraph{Bidirectional jailbreak handler.} The jailbreak handler operates in both directions: it \emph{escalates} decisions when jailbreak markers are detected (role-play framing, instruction-override language, system-prompt extraction attempts), and it can \emph{downgrade} a \textsc{safe\_freeze} to \textsc{safe\_stop} when no jailbreak markers are present but simple harm content is detected. This bidirectional design reflects the principle that simple harm (a genuine safety question from a concerned user) is not manipulation and should receive an empathetic explanation rather than unconditional refusal.
 
 
+\subsection{The Full Governance Pipeline}
+\label{sec:pipeline}
+
+The S~equation governs safety scoring, but a complete governance system requires more than a safety gate. AATIF implements a three-layer pipeline that separates safety, domain rules, and response style into distinct, independently testable stages:
+
+\begin{equation}
+\text{Input} \xrightarrow{S(d)} \text{Safety} \xrightarrow{P(d)} \text{Protocols} \xrightarrow{R(d)} \text{Style} \xrightarrow{\text{LLM}} \text{Generation} \xrightarrow{\text{Gate}} \text{Output}
+\label{eq:pipeline}
+\end{equation}
+
+\noindent Each stage has a distinct responsibility and cannot compensate for failures in another:
+
+\begin{enumerate}[nosep]
+\item \textbf{$S(d)$: Safety scoring} (the S~equation) determines whether a request should proceed, be clarified, or be refused---a mathematical judgment.
+\item \textbf{$P(d)$: Domain protocols} apply deterministic, domain-specific rules that can block requests or attach mandatory flags (e.g., medical disclaimers, age-appropriate language requirements) regardless of the S~score---a rules-based judgment.
+\item \textbf{$R(d)$: Response style} shapes \emph{how} the system responds (tone, verbosity, formality, directness) without affecting \emph{whether} it responds---a supervised aesthetic judgment.
+\item \textbf{LLM generation} produces the actual response text, constrained by the preceding layers.
+\item \textbf{Output Gate} performs final safety and quality verification on the generated response before it reaches the user---a post-generation checkpoint.
+\end{enumerate}
+
+This separation is the core architectural contribution beyond the S~equation itself: safety ($S$) is mathematical, protocols ($P$) are deterministic rules, and style ($R$) is supervised---three different computational paradigms governing three different concerns, composed in a fixed sequence with no feedback loops between them.
+
+
+\subsection{The R Equation: Response Style}
+\label{sec:r_equation}
+
+The R~equation governs response \emph{style}---how the system communicates---as distinct from the S~equation, which governs whether the system communicates at all. The separation is deliberate: safety and style are independent concerns, and conflating them (e.g., making a safety system also control tone) produces brittle designs where aesthetic preferences interfere with safety judgments.
+
+\begin{equation}
+R = \sigma(w_3 \cdot T + w_4 \cdot V + w_5 \cdot G + w_6 \cdot D)
+\label{eq:r_equation}
+\end{equation}
+
+\noindent where $T$ is time context (time of day mapped to six temporal periods), $V$ is voice (the user's communication style and register), $G$ is gap (time elapsed since the last interaction, mapped through six duration thresholds), and $D$ is domain signal (a domain-specific style influence, ranging from $D = 0.15$ for healthcare to $D = 0.70$ for creative contexts). The weights ($w_3 = 1.0$, $w_4 = 1.5$, $w_5 = 0.8$, $w_6 = 2.0$) encode the design judgment that domain context is the strongest style driver, followed by user voice. The output $R \in (0,1)$ maps to four style bands: formal ($R \leq 0.3$), balanced ($0.3 < R \leq 0.5$), warm ($0.5 < R \leq 0.7$), and casual ($R > 0.7$). Domain-specific gate ceilings prevent inappropriately casual style in sensitive contexts: healthcare caps $R$ at 0.5 (formal or balanced only) and education caps $R$ at 0.6 (no casual). Crucially, $R$ is \emph{not} a safety mechanism: it cannot override a \textsc{safe\_freeze} decision, cannot relax the harm gate, and cannot bypass domain protocols. Temporal features influence response tone, not safety thresholds, preventing the system from treating time-of-day as a proxy for risk. The R~equation module comprises 584 lines of implementation with 67 dedicated tests.
+
+
+\subsection{Domain Protocols $P(d)$}
+\label{sec:protocols}
+
+Domain protocols form a deterministic rules layer between safety scoring and response generation. Where the S~equation produces a continuous score and the R~equation shapes style, $P(d)$ applies categorical, non-negotiable constraints specific to the deployment domain.
+
+In the healthcare domain, for example, $P(d)$ enforces a credentials-check requirement: requests involving medical advice must either come from a verified professional context or receive a mandatory disclaimer. In the education domain, $P(d)$ enforces age-appropriate language constraints. These rules are not suggestions---they can \emph{block} a request that the S~equation would have allowed (e.g., an S-scored \textsc{execute} on a medical question without disclaimer) or attach \emph{emergency flags} that override all downstream processing (e.g., a suicide-risk indicator detected in an education context triggers immediate escalation regardless of S~score).
+
+The protocol layer is deliberately deterministic---no probabilistic scoring, no learned weights, no embeddings. Each rule is an explicit conditional: \texttt{if domain == healthcare and no\_credentials then attach\_disclaimer}. This makes protocol behavior fully auditable and prevents the subtle failures that emerge when probabilistic systems interact with domain-specific regulatory requirements. The module comprises 890 lines of implementation with 132 dedicated tests covering all supported domains.
+
+
+\subsection{Output Gate}
+\label{sec:output_gate}
+
+The Output Gate is the final checkpoint before a generated response reaches the user. It operates \emph{after} LLM generation, inspecting the actual output text rather than the input request. This post-generation position is critical: the S~equation, domain protocols, and R~equation all operate on the \emph{input}; the Output Gate is the only component that verifies the \emph{output}.
+
+The gate applies six check layers in sequence:
+
+\begin{enumerate}[nosep]
+\item \textbf{Safety leak detection}: Scans generated text for harm patterns that the LLM may have introduced despite safe input scoring---content that slipped through $S(d)$. Can block the response entirely.
+\item \textbf{Identity protection}: Enforces persona identity (the \emph{`\=atif} persona) and blocks references to other AI systems' internal architectures that would break character.
+\item \textbf{Forbidden phrase filtering}: Removes character-breaking phrases such as architecture internals, robotic hedging, or system-level language that a governed persona should never emit.
+\item \textbf{Protocol compliance check}: Verifies that $P(d)$ requirements are present in the response---mandatory keywords such as \textsc{emergency}, \textsc{disclaimer}, or \textsc{warning} that domain protocols flagged as required.
+\item \textbf{Response quality guards}: Checks length limits, emptiness, repetition loops, and language consistency. Can block degenerate outputs.
+\item \textbf{Final sanitization}: Strips file paths, API keys, JSON formatting errors, system prompt fragments, and excessive whitespace from the response.
+\end{enumerate}
+
+Each check can independently block or flag the output. A blocked output returns a safe fallback response rather than the generated text. The Output Gate comprises 748 lines of implementation with 105 dedicated tests.
+
+
+\subsection{The Governor: Pipeline Orchestration}
+\label{sec:governor}
+
+The Governor is the orchestrator that wires the full pipeline into a single execution path: $S(d) \to P(d) \to R(d) \to$ LLM $\to$ Output Gate. It is not a decision-maker itself but a coordinator that ensures each stage receives the correct inputs, respects the decisions of prior stages, and produces a complete audit trail.
+
+The Governor exposes a \texttt{GovernedResponse} dataclass that records, for each request: the S~score and decision, any protocol flags or blocks from $P(d)$, the R~style parameters, the raw LLM output, the Output Gate's check results, and the final delivered response. This audit trail makes every governance decision inspectable after the fact---a property required for deployment in regulated domains where ``why did the system say this?'' must have a concrete, traceable answer.
+
+The Governor module resolves four critical findings (C1--C4) identified during code review: (C1)~the pipeline stages execute in a fixed, non-bypassable order; (C2)~protocol blocks take precedence over S-score \textsc{execute} decisions; (C3)~the Output Gate cannot be skipped even when all prior stages approve; (C4)~the audit trail captures every intermediate state, not just the final output.
+
+
 % ════════════════════════════════════════════════════════════════
 \section{Arabic-First Design}
 \label{sec:arabic}
@@ -277,7 +364,7 @@ Expression & Literal meaning & Actual meaning \\
 \end{tabular}
 \end{table}
 
-A safety system without dialect awareness would flag all five expressions as harmful: ``slaughter,'' ``bomb,'' ``dying,'' ``killing'' all appear in violence-related anchor neighborhoods. The H scorer addresses this through 35 dialect-hyperbole anchors, each scored at $H \leq 0.10$. These anchors act as semantic counter-gravity: when an input matches a hyperbole anchor more closely than a harm anchor, the figurative interpretation dominates and the harm score remains low. This mechanism exploits the top-$K$ aggregation design---if one of the top-3 nearest anchors is a hyperbole anchor, it dilutes the average toward safety.
+A safety system without dialect awareness would flag all five expressions as harmful: ``slaughter,'' ``bomb,'' ``dying,'' ``killing'' all appear in violence-related anchor neighborhoods. The H scorer addresses this through 31 dialect-hyperbole anchors, each scored at $H \leq 0.05$. These anchors act as semantic counter-gravity: when an input matches a hyperbole anchor more closely than a harm anchor, the figurative interpretation dominates and the harm score remains low. The tighter threshold ($\leq 0.05$ rather than $\leq 0.10$) reflects calibration showing that hyperbole anchors needed a narrower safety margin to avoid inadvertently softening harm scores for inputs that are \emph{near} but not \emph{in} the figurative category. This mechanism exploits the top-$K$ aggregation design---if one of the top-3 nearest anchors is a hyperbole anchor, it dilutes the average toward safety.
 
 We call the underlying failure mode \emph{Lexical Anchor Contamination}: multilingual embeddings trained predominantly on English data may not reliably separate Arabic figurative violence from literal violence, because the training distribution underrepresents the figurative conventions of Arabic dialects. The cross-dialect accuracy drop documented by \citet{adhar2024} (0.84 to 0.64) confirms that dialect-sensitivity is not optional. The hyperbole anchors are a practical workaround; whether the failure reflects embedding geometry or training data distribution is an open question.
 
@@ -309,7 +396,7 @@ The emotional channel ($E$ scorer) and the multiplicative gate structure origina
 
 \subsection{Test Suite}
 
-AATIF includes 437 deterministic test cases (320 test functions, with parametrized expansions across multiple input scenarios---each parametrization is a real, independently executed test with its own pass/fail result) organized across the following categories: dialect detection (22~tests), S~equation mathematical properties (boundedness, monotonicity, sigmoid symmetry), decision logic across all four mode profiles, hysteresis stability, Law~$\Omega$ CBRN gate (12~tests), Law~$\Xi$ override lock, intent scorer (30~tests), adversarial cases (15~tests), gated comparison (18~tests), pipeline integration (3~tests), domain parameterization (35~tests), and held-out validation (2~tests). All tests are deterministic---they require no external model at test time and produce identical results across runs. The test suite runs via GitHub Actions for continuous integration. 437 tests pass.
+AATIF includes 790 deterministic tests organized across 17 test modules: S~equation core including intent engine (79~tests), emotion scorer (32~tests), gated comparison (19~tests), and response shaping (46~tests); safety gates including CBRN detection (12~tests) and jailbreak marker detection (10~tests); dialect hyperbole disambiguation (22~tests); domain parameterization including domain-specific $\theta(d)$ (35~tests) and domain protocols $P(d)$ (132~tests); intent scorer (30~tests); R~equation style adaptation (67~tests); Output Gate (105~tests); Governor orchestration (26~tests); time-sense module (40~tests); unknown-territory detection (11~tests); held-out validation (2~test functions with parametric expansion); and pipeline integration (3~tests). All tests are deterministic---they require no external model at test time and produce identical results across runs. The test suite runs via GitHub Actions for continuous integration.
 
 
 \subsection{HarmBench Evaluation}
@@ -461,7 +548,7 @@ The comparison is complementary, not competitive. FanarGuard's data-driven appro
 
 \subsection{Contributions}
 
-This paper makes four contributions. First, it combines, for the first time in a single deployable system, a closed-form multiplicative governance equation that provides non-compensability by construction (with an external hard override supplying the absolute high-harm floor), Arabic dialect-aware anchor scoring, and zero-fine-tuning extensibility: the multiplicative gate structure ensures that no combination of benign intent and calm emotion can restore the safety score once the harm gate is closing, and the framework is designed for human-over-the-loop governance rather than fully autonomous decision-making. Second, it demonstrates zero-training extensibility---coverage expands through anchor curation alone, requiring no labeled datasets or model retraining. Third, it validates Arabic-first design empirically: Arabic outperforms English on identical harmful prompts in the MultiJail benchmark (74.7\% vs 69.3\%), and 22 dialect-specific test cases produce zero false positives on figurative hyperbole. Fourth, it provides a complete open-source implementation with 437 deterministic tests ensuring mathematical correctness.
+This paper makes five contributions. First, it combines, for the first time in a single deployable system, a closed-form multiplicative governance equation that provides non-compensability by construction (with an external hard override supplying the absolute high-harm floor), Arabic dialect-aware anchor scoring, and zero-fine-tuning extensibility: the multiplicative gate structure ensures that no combination of benign intent and calm emotion can restore the safety score once the harm gate is closing, and the framework is designed for human-over-the-loop governance rather than fully autonomous decision-making. Second, it demonstrates zero-training extensibility---coverage expands through anchor curation alone, requiring no labeled datasets or model retraining. Third, it validates Arabic-first design empirically: Arabic outperforms English on identical harmful prompts in the MultiJail benchmark (74.7\% vs 69.3\%), and 22 dialect-specific test cases produce zero false positives on figurative hyperbole. Fourth, it presents a three-layer governance pipeline---$S(d)$ for safety, $P(d)$ for domain-specific deterministic protocols, $R(d)$ for response style---that separates mathematical safety scoring from rules-based domain constraints and supervised aesthetic adaptation, with an Output Gate providing post-generation verification and a Governor module ensuring a complete audit trail. Fifth, it provides a complete open-source implementation with 790 deterministic tests ensuring mathematical correctness across all modules.
 
 \subsection{Limitations}
 
@@ -481,13 +568,15 @@ The 73 conjectures represent the broader research program; this paper delivers o
 \label{sec:conclusion}
 % ════════════════════════════════════════════════════════════════
 
-AATIF provides an explicit, interpretable mathematical governance equation for LLM safety: $S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta))]$. The multiplicative gate structure provides non-compensability by construction---high harm drives the safety score toward zero regardless of benign intent or calm emotion---with an external hard override ($H > 0.7$) supplying the absolute refusal floor. The framework requires zero training data and extends through anchor curation alone.
+AATIF provides an explicit, interpretable mathematical governance equation for LLM safety: $S = \sigma(w_1 \cdot I + w_2 \cdot E) \cdot [1 - \sigma(\alpha(H - \theta(d)))]$. The multiplicative gate structure provides non-compensability by construction---high harm drives the safety score toward zero regardless of benign intent or calm emotion---with an external hard override ($H > 0.7$) supplying the absolute refusal floor. The harm threshold $\theta(d)$ is domain-parameterized, ranging from 0.25 (healthcare) to 0.50 (creative), allowing the same system to adapt its sensitivity to deployment context while the hard override remains domain-independent. The framework requires zero training data and extends through anchor curation alone.
 
-Arabic-first design is validated empirically: Arabic outperforms English on identical harmful prompts (74.7\% vs 69.3\% on MultiJail), and 35 dialect-hyperbole anchors eliminate false positives on figurative Arabic expressions. The system achieves 74.3\% safety-category detection on HarmBench with 100\% on chemical/biological threats, with in-sample calibration $F_1 = 0.984$ (54 cases) and held-out $F_1 = 0.9615$ (56 unseen cases) after anchor refinement, the latter still pending a fully blind validation round. A test suite of 437 deterministic test cases (320 test functions expanded via parametrization) ensures mathematical correctness.
+Beyond the S~equation, AATIF implements a full governance pipeline: safety scoring $S(d)$, domain-specific deterministic protocols $P(d)$, response style adaptation $R(d)$, LLM generation, and an Output Gate for post-generation safety and quality verification---all orchestrated by a Governor module that provides a complete audit trail.
+
+Arabic-first design is validated empirically: Arabic outperforms English on identical harmful prompts (74.7\% vs 69.3\% on MultiJail), and 31 dialect-hyperbole anchors (threshold $\leq 0.05$) eliminate false positives on figurative Arabic expressions. The system achieves 74.3\% safety-category detection on HarmBench with 100\% on chemical/biological threats, with in-sample calibration $F_1 = 0.984$ (54 cases) and held-out $F_1 = 0.9615$ (56 unseen cases) after anchor refinement, the latter still pending a fully blind validation round. A test suite of 790 deterministic tests ensures mathematical correctness across all modules.
 
 The framework is preliminary in coverage (4/13 MLCommons categories strong) and scale (single-observer development, 54-case calibration). Future work includes anchor expansion to all 13 MLCommons categories, ablation studies on individual scorers, integration of a cultural alignment axis inspired by FanarGuard's dual-axis design, and development of an Arabic-first embedding model to test the meaning density hypothesis directly.
 
-\paragraph{Code and Data.} The AATIF computational engine, test suite (437 tests), benchmark runners, and evaluation harness are available at \url{https://github.com/Abdelmgied-Khenkar/AATIF}. The companion preprint is available at \url{https://doi.org/10.5281/zenodo.20673292}.
+\paragraph{Code and Data.} The AATIF computational engine, test suite (790 tests), benchmark runners, and evaluation harness are available at \url{https://github.com/Abdelmgied-Khenkar/AATIF}. The companion preprint is available at \url{https://doi.org/10.5281/zenodo.20673292}.
 
 
 % ════════════════════════════════════════════════════════════════
