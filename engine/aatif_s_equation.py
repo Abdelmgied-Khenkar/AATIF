@@ -41,16 +41,16 @@ Gated variant (v2):
     (stronger than classic mode's SAFE_STOP guard).
 
     Profile variants add α (gate steepness) and θ (harm threshold):
-      default:          α=10, θ=0.35  (lowered from 0.40 → 0.35 after multi-model debate 2026-06-25)
+      default:          α=10, θ=0.40  (calibrated 2026-06-19 via bge-m3 A/B test)
       high_sensitivity: α=15, θ=0.45
       relaxed:          α=8,  θ=0.55
-      balanced_strict:  α=10, θ=0.35  (identical to default)
+      balanced_strict:  α=10, θ=0.40  (identical to default)
 
     2026-06-20 precision fix: held-out validation (56 cases) exposed an H
     over-blocking problem (precision 0.60). Adding educational "safe" anchors
     + counter-harm anchors to the H scorer (aatif_semantic_scorer.py) lifted
     held-out F1 0.735→0.943 (precision 0.60→0.93) with recall held at 0.96.
-    θ was at 0.40 (now 0.35) — raising it reopened a surveillance hole. The H-I
+    θ was left at 0.40 — raising it reopened a surveillance hole. The H-I
     link (Fix 2, link_h_to_i=compute() arg) is implemented but left OFF: it
     added no F1 once anchors handled precision. See benchmarks/fix_comparison.md.
 
@@ -59,9 +59,6 @@ Gated variant (v2):
     At θ=0.55 the gate missed spousal surveillance (H=0.40); at θ=0.40 it
     catches all 30 harmful cases with only 1 false positive ("حزين شوي بس بخير"
     → SAFE_STOP, which aligns with ع ط ف compassionate response).
-    2026-06-25: further lowered to θ=0.35 after multi-model consensus debate
-    (Claude, Gemini, DeepSeek, Grok). The 0.05 reduction tightens the gate
-    at borderline H values without affecting healthcare/education domains.
     The gate function 1−σ(α·(H−θ)) is monotonically *increasing* in θ
     at any fixed H, so raising θ opens the gate more at a given H level.
 
@@ -281,18 +278,17 @@ GATED_PROFILES = {
         "w1": 2.0,     # intent weight
         "w2": 1.5,     # emotion weight
         "alpha": 10,   # gate steepness
-        "theta": 0.35, # harm threshold — lowered from 0.40 to 0.35 after
-                       # multi-model consensus debate (2026-06-25). The 0.05
-                       # reduction tightens the gate at borderline H values.
-                       # Previous note: raising to 0.45 reopened the spousal-
-                       # surveillance hole. (see fix_comparison.md)
-        "desc": "Balanced gate — moderate steepness, gate center at H=0.35 (consensus 2026-06-25)"
+        "theta": 0.40, # harm threshold — kept at 0.40: raising it to 0.45 reopened
+                       # the spousal-surveillance hole (H=0.40 → CLARIFY). The
+                       # 2026-06-20 precision fix is carried by the H "safe"
+                       # anchors instead, not by θ. (see fix_comparison.md)
+        "desc": "Balanced gate — moderate steepness, gate center at H=0.40 (calibrated 2026-06-19)"
     },
     "high_sensitivity": {
         "w1": 2.0,
         "w2": 1.0,
         "alpha": 15,   # steeper gate → narrower transition zone
-        "theta": 0.30, # gate center BELOW default (0.35) so it closes earlier =
+        "theta": 0.30, # gate center BELOW default (0.40) so it closes earlier =
                        # catches harm sooner. Fixed 2026-06-20: was 0.45, which
                        # sat ABOVE default and made the "high sensitivity" gate
                        # MORE permissive than default across H∈[0.20,0.50] — a
@@ -312,8 +308,8 @@ GATED_PROFILES = {
         "w1": 2.0,
         "w2": 1.5,
         "alpha": 10,   # same steepness as default
-        "theta": 0.35, # tighter gate — catches surveillance/espionage cases
-        "desc": "Tighter gate — lowered to 0.35 (consensus 2026-06-25)"
+        "theta": 0.40, # tighter gate — catches surveillance/espionage cases
+        "desc": "Tighter gate — calibrated via A/B test (2026-06-19)"
     },
 }
 
@@ -347,15 +343,15 @@ DOMAIN_CONFIG = {
         "desc": "Children/students — gate closes early, harm is developmental",
     },
     "general": {
-        "theta": 0.35,
-        "desc": "Default — balanced gate (same as default profile, consensus 2026-06-25)",
+        "theta": 0.40,
+        "desc": "Default — balanced gate (same as calibrated default profile)",
     },
     "tech": {
-        "theta": 0.35,
+        "theta": 0.40,
         "desc": "Technical support — same as general",
     },
     "ecommerce": {
-        "theta": 0.35,
+        "theta": 0.40,
         "desc": "Commercial/shopping — same as general",
     },
     "creative": {
