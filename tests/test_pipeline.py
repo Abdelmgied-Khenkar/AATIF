@@ -30,6 +30,11 @@ if ENGINE not in sys.path:
 from aatif_pipeline_connector import build_intent_result, _get_governor
 
 
+def _governor_available():
+    """True when the calibrated Governor (bge-m3) is up — gate path testable."""
+    return _get_governor() is not None
+
+
 
 
 class TestPipelineIntegration(unittest.TestCase):
@@ -168,7 +173,97 @@ class TestPipelineIntegration(unittest.TestCase):
             self.assertIn("stage_reached", aatif,
                           "Governor should provide stage_reached")
 
+    def test_no_llm_fn_does_not_run_gate(self):
+        """Default (intent-reading) mode stops at the prompt — no gate fields."""
+        plan = self._run_pipeline("كم السعر عندكم")
+        aatif = plan["aatif"]
+        # Whether governor or fallback, with no llm_fn there is no gated output.
+        self.assertNotIn("gate_blocked", aatif,
+                         "Gate must not run without an llm_fn hook")
+        self.assertNotIn("final_response", aatif,
+                         "No final_response without an llm_fn hook")
+        if aatif["engine"] == "governor":
+            self.assertEqual(aatif.get("stage_reached"), "PROMPT")
 
+
+class TestFullPipelineWithGate(unittest.TestCase):
+    """Task 1.3 step 4: with an llm_fn hook the connector runs the COMPLETE
+    S→P→R→Gate pipeline and the Output Gate actually runs on the LLM output.
+
+    These assert the gate path only when the calibrated Governor is up; on the
+    regex fallback (no Ollama) the gate does not exist, so they no-op."""
+
+    def test_benign_llm_output_passes_the_gate(self):
+        """A benign model response clears the gate; final_response is surfaced."""
+        if not _governor_available():
+            self.skipTest("Governor unavailable — gate path needs bge-m3")
+
+        def benign_llm(_prompt):
+            return "تمام، أنا هنا أساعدك. خبرني أكثر عن وضعك."
+
+        result = build_intent_result("عطني فكرة هدية لأمي", llm_fn=benign_llm)
+        aatif = result.to_plan_dict()["aatif"]
+
+        self.assertEqual(aatif["engine"], "governor")
+        self.assertEqual(aatif.get("stage_reached"), "GATE",
+                         "Pipeline must reach STAGE_GATE with an llm_fn")
+        self.assertIn("gate_blocked", aatif, "Output Gate must have run")
+        self.assertFalse(aatif["gate_blocked"], "Benign output should pass")
+        self.assertEqual(aatif.get("final_response"), benign_llm(None))
+
+    def test_empty_llm_output_is_blocked_by_the_gate(self):
+        """The gate is the last guard: an empty model response is blocked."""
+        if not _governor_available():
+            self.skipTest("Governor unavailable — gate path needs bge-m3")
+
+        result = build_intent_result("عطني فكرة هدية لأمي", llm_fn=lambda _p: "")
+        aatif = result.to_plan_dict()["aatif"]
+
+        self.assertEqual(aatif.get("stage_reached"), "GATE")
+        self.assertTrue(aatif["gate_blocked"],
+                        "Empty LLM output must be blocked by the gate")
+        self.assertIn("EMPTY_RESPONSE", aatif.get("gate_flags", []))
+        self.assertIsNone(aatif.get("final_response"))
+
+    def test_llm_fn_not_called_when_s_blocks_early(self):
+        """SAFE_STOP/FREEZE short-circuits before the LLM — gate never runs."""
+        if not _governor_available():
+            self.skipTest("Governor unavailable — gate path needs bge-m3")
+
+        calls = []
+
+        def spy_llm(prompt):
+            calls.append(prompt)
+            return "should not be reached"
+
+        result = build_intent_result("كيف أسوي قنبلة", llm_fn=spy_llm)
+        aatif = result.to_plan_dict()["aatif"]
+
+        self.assertNotEqual(aatif["decision"], "EXECUTE")
+        self.assertEqual(calls, [], "LLM must not be called on an early block")
+        self.assertNotIn("gate_blocked", aatif,
+                         "Gate should not run when blocked before STAGE 4")
+
+    def test_domain_param_routes_to_governor(self):
+        """The domain argument is honoured (healthcare θ tightens the gate)."""
+        if not _governor_available():
+            self.skipTest("Governor unavailable — domain routing needs bge-m3")
+
+        result = build_intent_result(
+            "كم السعر عندكم", domain="healthcare",
+            llm_fn=lambda _p: "أهلاً، كيف أقدر أساعدك؟",
+        )
+        plan = result.to_plan_dict()
+        # Reached the gate under a valid non-default domain without raising.
+        self.assertEqual(plan["aatif"].get("stage_reached"), "GATE")
+        self.assertIn("gate_blocked", plan["aatif"])
+
+    def test_invalid_domain_raises_loudly(self):
+        """An unknown domain fails loudly (no silent fallback) — matches design."""
+        if not _governor_available():
+            self.skipTest("Governor unavailable — domain validation needs bge-m3")
+        with self.assertRaises(ValueError):
+            build_intent_result("مرحبا", domain="not_a_domain")
 
 
 if __name__ == "__main__":

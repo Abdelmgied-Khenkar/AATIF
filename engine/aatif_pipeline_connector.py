@@ -149,6 +149,21 @@ class IntentResult:
                     base["aatif"]["p_has_protocols"] = gov.p_result.has_protocols
                 if gov.governed_prompt:
                     base["aatif"]["governed_prompt"] = gov.governed_prompt
+                # Stage 4 — the Output Gate only runs when an llm_fn hook was
+                # supplied (the Governor gates a real response, never a prompt).
+                # When present, surface the gate verdict + the gated final text
+                # so a caller running the FULL pipeline sees the last guard.
+                if gov.gate_result is not None:
+                    base["aatif"]["gate_blocked"] = gov.gate_result.blocked
+                    base["aatif"]["gate_flags"] = list(gov.gate_result.flags)
+                    if gov.gate_result.block_reason:
+                        base["aatif"]["gate_block_reason"] = (
+                            gov.gate_result.block_reason
+                        )
+                if gov.final_response is not None:
+                    base["aatif"]["final_response"] = gov.final_response
+                if gov.emergency_injected:
+                    base["aatif"]["emergency_injected"] = True
             else:
                 base["aatif"]["engine"] = "intent_engine_fallback"
 
@@ -420,22 +435,48 @@ def _detect_dialect_simple(text: str) -> str:
 # ═══════════════════════════════════════════════════════════
 
 def build_intent_result(incoming_text, state="", business_type="",
-                        relationship_context=None):
+                        relationship_context=None, *,
+                        domain="general", llm_fn=None, conversation_id=None):
     """
     Drop-in replacement for the old intent_engine.build_intent_result().
 
     C1+C2: Routes through AATIFGovernor (S→P→R→Gate semantic pipeline).
     Falls back to old AATIFIntentEngine if Ollama/bge-m3 is unavailable.
+
+    Args:
+        incoming_text, state, business_type, relationship_context: as before
+            (positional, backward compatible).
+        domain: which DOMAIN_CONFIG profile the Governor scores under
+            ("general" default, plus "healthcare", "education", "tech", ...).
+            θ(d) tightens the gate for sensitive domains.
+        llm_fn: optional model hook `f(governed_prompt) -> response_text`. When
+            supplied, the Governor runs the FULL pipeline — including STAGE 4,
+            the Output Gate on the model's response — and the gate verdict +
+            gated `final_response` are surfaced under plan["aatif"]. When None
+            (the default, intent-reading mode), the pipeline stops at the
+            governed prompt and no gate runs, preserving old behaviour.
+        conversation_id: optional id enabling γ+ hysteresis and conversation
+            memory across turns.
     """
     relationship_context = relationship_context or {}
     governor = _get_governor()
 
     if governor is not None:
         # ── PRIMARY: Governor (semantic S→P→R→Gate pipeline) ──
-        gov_result = governor.process(incoming_text, domain="general")
+        # With an llm_fn hook the Governor runs end-to-end: S→P→R→prompt→LLM→
+        # Output Gate. Without it, it stops at the governed prompt.
+        gov_result = governor.process(
+            incoming_text,
+            domain=domain,
+            llm_fn=llm_fn,
+            conversation_id=conversation_id,
+        )
         reading = _governed_to_reading(incoming_text, gov_result)
     else:
         # ── FALLBACK: old regex engine (no Ollama) ──
+        # The documented fail-conservative fallback — a complete (if simpler)
+        # safety classifier, NOT a fail-open passthrough. It has no Output Gate,
+        # so llm_fn/domain/conversation_id do not apply on this path.
         engine = _get_fallback_engine()
         reading = engine.read(incoming_text, context=relationship_context)
         gov_result = None
