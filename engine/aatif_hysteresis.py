@@ -72,6 +72,12 @@ FAIL_CLOSED = {"SAFE_FREEZE"}
 # After MAX_CLARIFY_TURNS in CLARIFY state, the next CLARIFY → SAFE_STOP.
 MAX_CLARIFY_TURNS = 2
 
+# H2 FIX: Maximum number of conversation states to keep in memory.
+# Beyond this limit, the least-recently-used conversation is evicted.
+# This prevents unbounded memory growth in long-running servers.
+# Single-threaded contract: no locking — callers are assumed sequential.
+MAX_SESSIONS = 10_000
+
 # Decision severity ordering (higher index = more restrictive)
 SEVERITY = {
     "EXECUTE": 0,
@@ -144,18 +150,35 @@ class HysteresisController:
     """
 
     def __init__(self, epsilon_s: float = EPSILON_S,
-                 epsilon_h: float = EPSILON_H):
+                 epsilon_h: float = EPSILON_H,
+                 max_sessions: int = MAX_SESSIONS):
         self.epsilon_s = epsilon_s
         self.epsilon_h = epsilon_h
+        self.max_sessions = max_sessions
         self.states: dict[str, HysteresisState] = {}
+        # H2 FIX: LRU tracking — most recent access order
+        self._access_order: list[str] = []
 
     def _get_state(self, conversation_id: str) -> HysteresisState:
         """Get or create state for a conversation."""
         if conversation_id not in self.states:
+            # H2 FIX: evict LRU conversation if at capacity
+            if len(self.states) >= self.max_sessions:
+                self._evict_lru()
             self.states[conversation_id] = HysteresisState(
                 entered_at=time.time()
             )
+        # H2 FIX: update access order
+        if conversation_id in self._access_order:
+            self._access_order.remove(conversation_id)
+        self._access_order.append(conversation_id)
         return self.states[conversation_id]
+
+    def _evict_lru(self):
+        """Evict the least-recently-used conversation state."""
+        if self._access_order:
+            oldest = self._access_order.pop(0)
+            self.states.pop(oldest, None)
 
     def apply(self, conversation_id: str, S: float, H: float,
               raw_decision: str) -> dict:

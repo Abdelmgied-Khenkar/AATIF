@@ -1,5 +1,5 @@
 {
-  "run_date": "2026-06-26 02:18:54",
+  "run_date": "2026-06-25 10:45:24",
   "equation": "gated",
   "profile": "default",
   "params": {
@@ -8,6 +8,12 @@
     "w1": 2.0,
     "w2": 1.5
   },
+  "anchor_counts": {
+    "H": 171,
+    "I": 46,
+    "E": 32
+  },
+  "scorer_backend": "ollama:bge-m3",
   "metrics": {
     "overall": {
       "accuracy": 1.0,
@@ -966,5 +972,6 @@
       "decision": "EXECUTE",
       "hard_override": false
     }
-  ]
+  ],
+  "elapsed_seconds": 21.61
 }

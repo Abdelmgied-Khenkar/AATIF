@@ -1,35 +1,41 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-06-23 19:30 EDT by Cowork session
+Last updated: 2026-06-26 by Cowork session (Phase 1 + Phase 2 COMPLETE)
 
 ## Urgent (هذا الأسبوع)
-- [ ] (AATIF) **تحديث الورقة الكبير** — aatif_paper_v2.tex (النسخة الرسمية) محتاجة تحديث شامل:
-  - عدد الاختبارات → 775 (الورقة لسه بالقديم)
-  - عدد الـ anchors → H=171، I=46، E=32، الإجمالي=249
-  - dialect-hyperbole 35→31، عتبة ≤0.10→≤0.05
-  - θ(d) مش موجودة في الورقة أصلاً — محتاج قسم جديد
-  - high_sensitivity θ غلط في الورقة (0.45 بدل 0.30)
-  - توثيق الموديولات الجديدة: R equation، P(d)، Output Gate، Governor
-  - توثيق unknown territory detection + CLARIFY exhaustion
+- [x] (AATIF) ✅ **تصحيح الأخطاء الحسابية AE1-AE5** — 2026-06-26: 5 أخطاء اتصلحت في الورقة (ARITHMETIC_FIXES_2026-06-26.md)
+- [x] (AATIF) ✅ **ربط المحركين C1** — 2026-06-26: تم التحقق أن الربط كان موجود فعلاً. المحرك الدلالي هو المستخدم في الـ pipeline.
+- [x] (AATIF) ✅ **ربط المحافظ C2** — 2026-06-26: صلحنا الفجوة الوحيدة (llm_fn param للـ Output Gate). 6 اختبارات تكامل جديدة. 933 نجحت / 0 فشل.
+- [x] (AATIF) ✅ **إعادة تشغيل benchmarks + ربط البايبلاين الكامل** — Task 1.4 خلص 2026-06-26. اكتشفنا إن الـ runners كانوا يستخدموا H لوحده (H≥0.3) مش البايبلاين الكامل! صلحنا: `run_harmbench.py` و `run_multijail_arabic.py` صاروا default `--mode full` يمرّوا كل prompt عبر `AATIFGovernor` (H+I+E → S gated θ=0.40 → S→P→R→Gate). detected = blocked. + صلحنا bug تسمية backend (كان يقول TF-IDF وهو bge-m3). **HarmBench:** full 172/236 محجوب (72.9%)، 192 not-executed (81.4%) مقابل h-only 186 (78.8%). **MultiJail:** متطابق (AR 66/75، EN 68/75). 14 prompt تغيّر قرارهم → CLARIFY (كلهم H∈[0.30,0.40)، 0 محجوب جديد). 933 اختبار نجح. التفاصيل: `benchmarks/pipeline_wiring_report_2026-06-26.md`
+  - **+ تحديث الورقة (2026-06-26):** جداول §5.2 HarmBench و §5.3 MultiJail في `aatif_paper_v2.tex` اتعملوا rebuild يعرضوا قرار البايبلاين الكامل (Block/Clarify/Execute) لكل category بدل "detected %". الـ abstract + conclusion + limitations اتعدّلوا: block rate 83.8% (safety) + not-executed 90.5% + سلوك CLARIFY لـ14 prompt. كل رقم متحقّق من ملفات `_full_pipeline_2026-06-26.json`. الورقة compile نظيف (pdflatex، 21 صفحة، 0 errors). **Task 1.4 خلص بالكامل — كود + ورقة.**
 - [ ] (AATIF) تحديث Zenodo — رفع النسخة الجديدة بعد تصحيح الورقة
-- [ ] (AATIF) إصلاح وصّال agent SKILL.md — يقول 164 اختبار (المفروض 775) و θ fixed (المفروض θ(d)) — يحتاج تعديل يدوي من Settings → Capabilities
+- [ ] (AATIF) إصلاح وصّال agent SKILL.md — يقول 164 اختبار (المفروض 933) و θ fixed (المفروض θ(d)) — يحتاج تعديل يدوي من Settings → Capabilities
 
 ## Next (الأسبوع الجاي)
-- [ ] (AATIF) **إصلاحات Codex Review (أولوية عالية):**
-  - [x] H3: ✅ اتصلحت 2026-06-23 (Agent حسّاب) — `_has_jailbreak_markers` صار يخفّض حالة كل marker وقت المقارنة (`marker.lower()`)، و" DAN "→" dan ". الثغرة fail-open اتسكّرت لكل الـ markers مش بس DAN. + test_jailbreak_markers.py (10 اختبارات). الحزمة: 728 نجحت / 0 فشل.
-  - H1: Hysteresis أول turn مفتوحة (fail-open) — محتاج sentinel "unset"
-  - H4: R equation sigmoid مشبّعة — دايماً "casual" — محتاج negative bias/offset
-  - H2: Unbounded state، no eviction، no thread safety
-  - H5: Conversation memory privacy claim خاطئ (RAM)
-  - M1-M7: domain silently ignored، gated profile KeyError، unknown-territory fail-open default، output gate `passed` conflation، repetition dedup formatting، code duplication (Ollama 4x)
+- [x] (AATIF) ✅ **إصلاحات Codex Review — Phase 2 كاملة (2026-06-26):**
+  - [x] H3: ✅ 2026-06-23 — `marker.lower()` fail-open fix
+  - [x] H1: ✅ 2026-06-26 — Hysteresis sentinel + fail-closed أول turn
+  - [x] H4: ✅ 2026-06-26 — R equation bias offset (-2.65) يحل تشبّع sigmoid
+  - [x] H2: ✅ 2026-06-26 — LRU eviction (MAX_SESSIONS=10K، MAX_ARC_STATES=100)
+  - [x] H5: ✅ 2026-06-26 — توثيق "RAM-only" في docstrings
+  - [x] C3: ✅ 2026-06-26 — BLOCK/EMERGENCY early return + priority sort + 10 اختبارات
+  - [x] C4: ✅ 2026-06-26 — EngineHealthStatus enum + descriptive RuntimeError في 3 scorers
+  - [x] M1: ✅ 2026-06-26 — domain ValueError بدل silently ignored
+  - [x] M2: ✅ 2026-06-26 — توثيق balanced_strict intentional
+  - [x] M3: ✅ 2026-06-26 — unknown-territory fail-closed (SAFE_FREEZE)
+  - [x] M4: ✅ 2026-06-26 — توثيق S informational-only في intent engine
+  - [x] M5: ✅ 2026-06-26 — cosmetic flags فصل (passed vs modified)
+  - [x] M6: ✅ 2026-06-26 — repetition dedup يحافظ على الفواصل الأصلية
+  - [x] M7: ✅ 2026-06-26 — aatif_math.sigmoid مشترك + intent_engine delegates
+  - **النتيجة:** 865 نجحت / 16 فشل (sklearn سابقاً) / 67 تخطّت — صفر تراجع
 - [x] (AATIF) **مزامنة النسخة المنشورة AATIF/** — ✅ وصّال 2026-06-23 + git commit `25bf314`. كل 14 موديول متطابقين md5.
-- [ ] (AATIF) **اقتراحات Codex** — DomainConfig dataclass، per-domain alpha، frozen dataclass + enum constants
-- [ ] (AATIF) **Shared utility modules** — aatif_embeddings.py + aatif_text.py (تقليل تكرار الكود)
+- [ ] (AATIF) **Phase 3 — اقتراحات Codex (تحسينات):** DomainConfig dataclass، per-domain alpha، frozen dataclass + enum constants
+- [ ] (AATIF) **Shared utility modules** — aatif_embeddings.py + aatif_text.py (تقليل تكرار الكود المتبقي)
 - [ ] (AATIF) **تتبّع التغييرات (change traceability)**
 - [ ] (AATIF) **بوابة التفعيل المتناثر (sparse activation gate)**
-- [ ] (AATIF) إعادة تشغيل benchmarks (HarmBench/MultiJail) على 249 anchor — الأرقام الحالية من 132 anchor
-- [ ] (AATIF) إصلاح FanarGuard placeholder — aatif_paper_arxiv.tex line 375 فيه arXiv:2411.XXXXX
-- [ ] (AATIF) مراجعة الورقة مع LLM employees — Grok/Gemini/DeepSeek يراجعوا v2
-- [ ] (AATIF) تقديم الورقة لمؤتمر — EMNLP 2026 أو AACL-IJCNLP 2026
+- [x] (AATIF) ✅ إعادة تشغيل benchmarks (HarmBench/MultiJail) على 249 anchor — خلص 2026-06-26 على البايبلاين الكامل (شوف Urgent فوق + pipeline_wiring_report)
+- [x] (AATIF) ~~إصلاح FanarGuard placeholder~~ — تم الإصلاح في v2 والنسخة القديمة (Fatehkia et al., arXiv:2511.18852, EACL 2026)
+- [x] (AATIF) ✅ مراجعة الورقة مع LLM employees — 2026-06-25: 2.5/5 Borderline Reject (PAPER_REVIEW_LLM_2026-06-25.md)
+- [ ] (AATIF) تقديم الورقة لمؤتمر — EACL 2027 ARR deadline August 3 (خطة تنفيذية في EXECUTION_PLAN_2026-06-26.md)
 
 ## Later (مش مستعجل)
 - [ ] (AATIF) D (Directness) parameter — ما اتبنى بعد
@@ -46,6 +52,8 @@ Last updated: 2026-06-23 19:30 EDT by Cowork session
 - "creative" θ: DOMAIN_CONFIG=0.50 (domain axis)، GATED_PROFILES=0.55 (profile axis) — محاور مختلفة، مش تناقض
 
 ## Done (تم)
+- [x] 2026-06-26 (Cowork) **Phase 2 — Fix Safety Edges كامل** — 15 إصلاح (H1-H5، C3-C4، M1-M7) عبر 6 ملفات engine + output gate. اكتشفنا وصلحنا bug خطير: BLOCK/EMERGENCY ما كان ينفّذ لأن check() ما كان يعمل early return بعد _check_protocol_compliance. + bug ثاني: set iteration order عشوائي كان يخلّي EMERGENCY يتنفّذ قبل BLOCK. + bug ثالث: text sync كان يلغي تنظيف الطبقات 1-3 (29 regression) — حللناه بـ snapshot approach. 10 اختبارات C3 جديدة. **النتيجة:** 865 نجحت / 16 فشل (sklearn سابقاً) / 67 تخطّت — صفر تراجع من التغييرات.
+- [x] 2026-06-26 (Cowork) **Phase 1 — Fix the Foundation كامل** — Tasks 1.1-1.4 (AE fixes، C1 wiring verification، C2 Governor integration، benchmark re-run on full pipeline).
 - [x] 2026-06-23 (Cowork) **إصلاح H3 على GitHub** — commit `26f54b5`: `marker.lower()` في `_has_jailbreak_markers` + `test_jailbreak_markers.py`. 100 إضافة، 3 حذف.
 - [x] 2026-06-23 (Agent وصّال) **مزامنة ~/AATIF/** — 5 موديولات جديدة + 4 محدّثة. commit `25bf314`. 14 موديول متطابقين md5. أمسك ثغرة ربط (governor←time_sense).
 - [x] 2026-06-23 (Cowork) **تنظيف git ~/AATIF/** — شيل index.lock + حذف 3 ملفات مؤقتة (.wassal_write_test, e.tmp, err.tmp).

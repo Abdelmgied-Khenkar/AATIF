@@ -280,6 +280,11 @@ class AATIFIntentEngine:
         r"(الأمان|الحماية|القواعد|التعليمات|القيود|الحظر|الفلتر|الضوابط)",
     ]
 
+    # H2 FIX: Maximum number of session states to keep in memory.
+    # Prevents unbounded growth of _in_clarify_zone dict.
+    # Single-threaded contract: no locking — callers are assumed sequential.
+    MAX_SESSIONS = 10_000
+
     def __init__(self, mode="safe_environment", llm_fn=None, nlp_bridge=None):
         self.mode_name = mode
         self.params = dict(self.MODES[mode])
@@ -287,6 +292,7 @@ class AATIFIntentEngine:
         # Hysteresis state: tracks whether we're in the CLARIFY zone.
         # Key = caller-provided session_id, Value = bool.
         self._in_clarify_zone: dict[str, bool] = {}
+        self._clarify_access_order: list[str] = []  # H2 FIX: LRU tracking
 
         if nlp_bridge is not None:
             self.nlp_bridge = nlp_bridge
@@ -365,6 +371,12 @@ class AATIFIntentEngine:
 
         if governance_intact:
             # 7. Softening factor: S = σ(w1·I + w2·E − w3·H)
+            # M4 NOTE: S is computed here and exposed in IntentReading as
+            # `softening_factor` for debugging, logging, and downstream
+            # consumption (e.g., the S equation pipeline). It is NOT used
+            # in _decide() — the intent engine's decision logic uses
+            # harm/ambiguity/mode directly. This is by design: the intent
+            # engine provides the RAW signals; the S equation combines them.
             intent_val = 1.0 - ambiguity
             emotion_val = 0.9 if load_bearing else (0.7 if emotional_state != "clear" else 0.5)
             S = self._sigmoid(
@@ -808,12 +820,12 @@ class AATIFIntentEngine:
         # SAFE_STOP always wins; keep the session in the clarify zone until
         # harm later drops below the hysteresis exit threshold.
         if harm >= self.params["tau_stop"]:
-            self._in_clarify_zone[session_id] = True
+            self._set_clarify_zone(session_id, True)
             return "SAFE_STOP", f"Harm ({harm:.2f}) ≥ stop threshold"
 
         # Enter CLARIFY when harm reaches the rewrite threshold.
         if harm >= self.params["tau_rewrite"]:
-            self._in_clarify_zone[session_id] = True
+            self._set_clarify_zone(session_id, True)
             return "CLARIFY", f"Harm ({harm:.2f}) requires verification"
 
         # Hysteresis: once harm-driven CLARIFY is entered, stay there until
@@ -822,7 +834,7 @@ class AATIFIntentEngine:
             return "CLARIFY", f"Hysteresis: harm ({harm:.2f}) still in buffer zone"
 
         if was_in_clarify:
-            self._in_clarify_zone[session_id] = False
+            self._set_clarify_zone(session_id, False)
 
         if mode == "STOP":
             return "CLARIFY", "Ambiguous — ask one clarifying question"
@@ -832,6 +844,23 @@ class AATIFIntentEngine:
             return "EXECUTE", f"Provide evidence with response{gentle}"
 
         return "EXECUTE", f"Clear request — respond directly{gentle}"
+
+    # ─── H2 FIX: Bounded clarify-zone state ──────────────
+
+    def _set_clarify_zone(self, session_id: str, value: bool):
+        """Set clarify-zone state with LRU eviction."""
+        if session_id not in self._in_clarify_zone:
+            # Evict oldest if at capacity
+            if len(self._in_clarify_zone) >= self.MAX_SESSIONS:
+                if self._clarify_access_order:
+                    oldest = self._clarify_access_order.pop(0)
+                    self._in_clarify_zone.pop(oldest, None)
+        else:
+            # Move to end of access order
+            if session_id in self._clarify_access_order:
+                self._clarify_access_order.remove(session_id)
+        self._clarify_access_order.append(session_id)
+        self._in_clarify_zone[session_id] = value
 
     # ─── Deep Intent (rule-based fallback) ──────────────
 
@@ -869,12 +898,19 @@ class AATIFIntentEngine:
 #  Convenience wrapper
 # ═══════════════════════════════════════════════════════════
 
+# H2 FIX: bounded engine cache — max 50 unique (mode, llm) combos.
+# In practice only 5 modes exist, so this cap is defensive.
+_ENGINE_CACHE_MAX = 50
 _engine_cache = {}
 
 def read_intent(message, context=None, mode="safe_environment", llm_fn=None, session_id="default"):
     """Quick call without managing an engine instance."""
     key = (mode, llm_fn is not None)
     if key not in _engine_cache:
+        # H2 FIX: evict oldest if at capacity
+        if len(_engine_cache) >= _ENGINE_CACHE_MAX:
+            oldest_key = next(iter(_engine_cache))
+            del _engine_cache[oldest_key]
         _engine_cache[key] = AATIFIntentEngine(mode=mode, llm_fn=llm_fn)
     return _engine_cache[key].read(message, session_id=session_id, context=context)
 

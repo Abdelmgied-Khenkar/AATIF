@@ -679,3 +679,124 @@ def test_r_equation_is_monotonic_in_domain():
         assert readings[d1] <= readings[d2], (
             f"original_r({d1})={readings[d1]} > original_r({d2})={readings[d2]}"
         )
+
+
+# ═══════════════════════════════════════════════════════════
+#  H4 REGRESSION: Sigmoid saturation fix
+# ═══════════════════════════════════════════════════════════
+#
+# Codex H4: Before the bias fix, z was always ≥1.5 so σ(z) was
+# always in [0.82, 0.95] — stuck in "casual". The bias=-2.65
+# centers the operating point so all four style bands are reachable.
+
+class TestH4SigmoidSaturationFix:
+    """H4 regression: R equation must not be sigmoid-saturated."""
+
+    def test_bias_exists_in_default_weights(self):
+        """H4: bias key must exist in DEFAULT_WEIGHTS."""
+        assert "bias" in DEFAULT_WEIGHTS
+        assert DEFAULT_WEIGHTS["bias"] == -2.65
+
+    def test_bias_loaded_by_constructor(self):
+        """H4: REquation constructor loads the bias."""
+        r_eq = REquation()
+        assert hasattr(r_eq, 'bias')
+        assert r_eq.bias == -2.65
+
+    def test_bias_centers_sigmoid_at_midrange(self):
+        """H4: mid-range signals (all ~0.5) → R ≈ 0.5, not 0.9."""
+        r_eq = REquation()
+        # With bias=-2.65, z = w3*0.5 + w4*0.5 + w5*0.5 + w6*0.5 - 2.65 = 0
+        z = (r_eq.w3 * 0.5 + r_eq.w4 * 0.5 +
+             r_eq.w5 * 0.5 + r_eq.w6 * 0.5 + r_eq.bias)
+        assert abs(z) < 0.01, f"Mid-range z should be near 0, got {z}"
+        r = sigmoid(z)
+        assert abs(r - 0.5) < 0.01, f"Mid-range R should be ~0.5, got {r}"
+
+    def test_sigmoid_not_saturated_at_minimum(self):
+        """H4: all signals at 0 → R < 0.15 (formal band reachable)."""
+        r_eq = REquation()
+        z_min = r_eq.bias  # all signals at 0
+        r_min = sigmoid(z_min)
+        assert r_min < 0.15, (
+            f"Minimum R should be < 0.15 (formal), got {r_min:.4f}. "
+            f"Sigmoid is still saturated!"
+        )
+
+    def test_sigmoid_not_saturated_at_maximum(self):
+        """H4: all signals at 1 → R > 0.85 (casual band reachable)."""
+        r_eq = REquation()
+        z_max = r_eq.w3 + r_eq.w4 + r_eq.w5 + r_eq.w6 + r_eq.bias
+        r_max = sigmoid(z_max)
+        assert r_max > 0.85, (
+            f"Maximum R should be > 0.85 (casual), got {r_max:.4f}"
+        )
+
+    def test_full_range_span(self):
+        """H4: R range should span > 0.7 (not compressed to 0.13)."""
+        r_eq = REquation()
+        z_min = r_eq.bias
+        z_max = r_eq.w3 + r_eq.w4 + r_eq.w5 + r_eq.w6 + r_eq.bias
+        r_min = sigmoid(z_min)
+        r_max = sigmoid(z_max)
+        span = r_max - r_min
+        assert span > 0.7, (
+            f"R range {r_min:.4f}→{r_max:.4f} = {span:.4f} too narrow. "
+            f"Signals are effectively inert!"
+        )
+
+    def test_all_style_bands_reachable(self):
+        """H4: formal, balanced, warm, and casual must all be reachable."""
+        r_eq = REquation()
+        styles_found = set()
+
+        # Sweep z from min to max
+        z_min = r_eq.bias
+        z_max = r_eq.w3 + r_eq.w4 + r_eq.w5 + r_eq.w6 + r_eq.bias
+        for i in range(21):
+            frac = i / 20.0
+            z = z_min + frac * (z_max - z_min)
+            r = sigmoid(z)
+            style = r_to_style(r)
+            styles_found.add(style)
+
+        expected = {"formal", "balanced", "warm", "casual"}
+        assert styles_found == expected, (
+            f"H4: only reached styles {styles_found}, "
+            f"missing {expected - styles_found}"
+        )
+
+    def test_end_to_end_formal_reachable(self):
+        """H4 end-to-end: healthcare + long gap + night → formal style."""
+        r_eq = REquation()
+        # Late night, healthcare, week-long gap, English formal text
+        time_reading = FakeTimeReading(
+            period="ليل", is_late_night=True, fatigue_risk=True
+        )
+        reading = r_eq.compute(
+            text="What are the contraindications?",
+            domain="healthcare",
+            time_reading=time_reading,
+            gap_seconds=14 * 24 * 3600,  # 2 weeks
+        )
+        assert reading.style_recommendation in ("formal", "balanced"), (
+            f"H4: healthcare+night+long-gap should be formal/balanced, "
+            f"got '{reading.style_recommendation}' (R={reading.r_score})"
+        )
+
+    def test_end_to_end_casual_reachable(self):
+        """H4 end-to-end: creative + rapid-fire + dialect → casual style."""
+        r_eq = REquation()
+        time_reading = FakeTimeReading(
+            period="صباح", is_late_night=False, fatigue_risk=False
+        )
+        reading = r_eq.compute(
+            text="ابي اكتب قصيدة عن الحب يعني خلاص! 🎶",
+            domain="creative",
+            time_reading=time_reading,
+            gap_seconds=30,
+        )
+        assert reading.style_recommendation in ("warm", "casual"), (
+            f"H4: creative+morning+rapid+dialect should be warm/casual, "
+            f"got '{reading.style_recommendation}' (R={reading.r_score})"
+        )

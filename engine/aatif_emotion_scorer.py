@@ -126,8 +126,16 @@ class SemanticEmotionScorer:
                 self.backend = _OllamaBackend(self.texts)
                 self.backend_name = f"ollama:{OLLAMA_EMBED_MODEL}"
             except Exception as e:
-                print(f"[error] Ollama unavailable ({e})")
-                raise
+                # C4 FIX: raise descriptive RuntimeError — same pattern
+                # as H scorer. All thresholds are calibrated on bge-m3;
+                # operating without calibrated embeddings is unsafe.
+                raise RuntimeError(
+                    f"AATIF E scorer requires calibrated embeddings "
+                    f"(Ollama/bge-m3) but Ollama is unavailable: {e}. "
+                    f"All emotion thresholds are calibrated on bge-m3 — "
+                    f"operating without it would produce uncalibrated "
+                    f"scores. Start Ollama with: ollama serve && ollama pull bge-m3"
+                ) from e
 
     # Confidence thresholds based on max cosine similarity
     CONFIDENCE_HIGH = 0.45    # strong match — score is reliable

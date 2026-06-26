@@ -25,7 +25,29 @@ reference levels, NOT a nearest-neighbor flip. That keeps H continuous
 """
 
 from __future__ import annotations
+import enum
 import numpy as np
+
+
+# ═══════════════════════════════════════════════════════════
+#  C4 FIX: EngineHealthStatus — backend availability enum
+# ═══════════════════════════════════════════════════════════
+class EngineHealthStatus(enum.Enum):
+    """Health status for the semantic scoring backend.
+
+    FULL     — primary backend (Ollama/bge-m3) is running. Scores are
+               calibrated and all thresholds (θ, confidence, unknown-territory)
+               are meaningful.
+    DEGRADED — primary unavailable, sentence-transformers fallback active.
+               Scores are approximate; confidence thresholds may differ.
+    OFFLINE  — no embedding backend available. The engine MUST raise
+               RuntimeError rather than returning uncalibrated TF-IDF scores,
+               because all safety thresholds are calibrated on bge-m3.
+    """
+    FULL = "FULL"
+    DEGRADED = "DEGRADED"
+    OFFLINE = "OFFLINE"
+
 
 # M7: shared config — single source of truth for embedding settings
 from aatif_embeddings import (

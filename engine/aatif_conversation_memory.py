@@ -71,8 +71,14 @@ class EmotionalArc:
     shifted: bool = False                             # did emotion change?
     escalated: bool = False                           # did it get heavier?
 
+    # H2 FIX: max states per arc (prevents unbounded list growth)
+    MAX_STATES = 100
+
     def update(self, state: str, load_bearing: bool):
         self.states.append(state)
+        # H2 FIX: cap states list
+        if len(self.states) > self.MAX_STATES:
+            self.states = self.states[-self.MAX_STATES:]
         if load_bearing:
             self.load_bearing_count += 1
 
@@ -124,14 +130,24 @@ class AATIFConversationMemory:
     Manages per-relationship conversation history with emotional tracking.
     """
 
-    def __init__(self, max_turns=20, persist_dir=None):
+    # H2 FIX: Maximum number of conversations to keep in memory.
+    # Beyond this, the least-recently-used conversation is evicted.
+    # Single-threaded contract: no locking — callers are assumed sequential.
+    MAX_CONVERSATIONS = 10_000
+    # H2 FIX: Maximum emotional states per arc (prevents unbounded list).
+    MAX_ARC_STATES = 100
+
+    def __init__(self, max_turns=20, persist_dir=None,
+                 max_conversations=None):
         """
         Args:
             max_turns: Max turns to keep in session memory per conversation
             persist_dir: Directory for persistent memory (None = RAM only)
+            max_conversations: Max conversations to track (default: MAX_CONVERSATIONS)
         """
         self.max_turns = max_turns
         self.persist_dir = persist_dir
+        self.max_conversations = max_conversations or self.MAX_CONVERSATIONS
 
         # Session memory: relationship_key → list of ConversationTurn
         self._turns: dict[str, list] = defaultdict(list)
@@ -144,6 +160,9 @@ class AATIFConversationMemory:
 
         # Topic tracking: relationship_key → set of topics
         self._topics: dict[str, set] = defaultdict(set)
+
+        # H2 FIX: LRU tracking for conversation eviction
+        self._conv_access_order: list[str] = []
 
         # Load persistent memory if available
         if persist_dir:
@@ -193,10 +212,36 @@ class AATIFConversationMemory:
             # Extract topics (simple keyword extraction)
             self._extract_topics(relationship_key, text)
 
+        # H2 FIX: track access and evict LRU if over capacity
+        self._touch_conversation(relationship_key)
+
         # Add turn and enforce max
         self._turns[relationship_key].append(turn)
         if len(self._turns[relationship_key]) > self.max_turns:
             self._turns[relationship_key] = self._turns[relationship_key][-self.max_turns:]
+
+    # ── H2 FIX: LRU conversation management ──
+
+    def _touch_conversation(self, key: str):
+        """Mark conversation as recently used; evict LRU if over capacity."""
+        if key not in self._turns and key not in self._arcs:
+            # New conversation — check capacity
+            active = set(self._turns) | set(self._arcs) | set(self._dialects) | set(self._topics)
+            if len(active) >= self.max_conversations:
+                self._evict_lru_conversation()
+        # Update access order
+        if key in self._conv_access_order:
+            self._conv_access_order.remove(key)
+        self._conv_access_order.append(key)
+
+    def _evict_lru_conversation(self):
+        """Evict the least-recently-used conversation from all dicts."""
+        if self._conv_access_order:
+            oldest = self._conv_access_order.pop(0)
+            self._turns.pop(oldest, None)
+            self._arcs.pop(oldest, None)
+            self._dialects.pop(oldest, None)
+            self._topics.pop(oldest, None)
 
     # ── Get context ──
 

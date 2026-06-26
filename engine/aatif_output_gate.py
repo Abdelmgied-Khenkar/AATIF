@@ -436,7 +436,16 @@ class AATIFOutputGate:
         text = self._check_forbidden_phrases(text, reading)
 
         # Layer 4: Protocol compliance
+        # Snapshot cleaned_text before protocol check — protocol compliance
+        # may inject EMERGENCY instructions into reading.cleaned_text.
+        _pre_proto_cleaned = reading.cleaned_text
         self._check_protocol_compliance(text, protocol_reading, reading)
+        if reading.blocked:
+            return reading
+        # If protocol compliance modified cleaned_text (e.g., EMERGENCY
+        # injection), carry that forward for subsequent layers.
+        if reading.cleaned_text != _pre_proto_cleaned:
+            text = reading.cleaned_text
 
         # Layer 5: Response quality guards
         text, blocked = self._check_quality(text, domain, reading)
@@ -450,7 +459,22 @@ class AATIFOutputGate:
         text = self._clean_whitespace(text)
 
         reading.cleaned_text = text
-        reading.passed = len(reading.flags) == 0
+
+        # M5 fix: Distinguish hard-fail flags from cosmetic/cleanup flags.
+        # Cosmetic flags mean the gate successfully cleaned the response —
+        # the output is safe to send. Only hard-fail flags mean the response
+        # has a real problem that couldn't be cleaned.
+        _COSMETIC_FLAGS = {
+            "PII_LEAK_CLEANED",
+            "IDENTITY_LEAK_FIXED",
+            "DISMISSIVE_AI_REMOVED",
+            "FORBIDDEN_PHRASE_CLEANED",
+            "RESPONSE_TRUNCATED",
+            "REPETITION_DETECTED",
+            "SANITIZED",
+        }
+        hard_flags = [f for f in reading.flags if f not in _COSMETIC_FLAGS]
+        reading.passed = len(hard_flags) == 0
 
         return reading
 
@@ -608,8 +632,13 @@ class AATIFOutputGate:
             if action and action != "NONE":
                 triggered_actions.add(action)
 
-        # Check each triggered action for required keywords
-        for action in triggered_actions:
+        # Check each triggered action for required keywords.
+        # Process BLOCK first — it's highest severity and must take
+        # priority over EMERGENCY or any other action.
+        for action in sorted(
+            triggered_actions,
+            key=lambda a: (0 if a == "BLOCK" else 1),
+        ):
             # ─── BLOCK: hard block — response must NOT reach user ───
             # When P(d) says BLOCK, the response is blocked entirely.
             # No keywords needed — BLOCK means BLOCK.
@@ -739,8 +768,22 @@ class AATIFOutputGate:
             )
 
         # ── Repetition detection ──
-        sentences = re.split(r'[.!?؟。\n]+', stripped)
-        sentences = [s.strip() for s in sentences if s.strip()]
+        # M6 FIX: split with capturing group to preserve original delimiters
+        # (newlines, punctuation) instead of forcing ". " between all sentences.
+        parts = re.split(r'([.!?؟。\n]+)', stripped)
+        # parts = [text, delim, text, delim, ...] — odd-index = delimiters
+        sentences = []
+        delimiters = []
+        for i, part in enumerate(parts):
+            if i % 2 == 0:  # sentence text
+                if part.strip():
+                    sentences.append(part.strip())
+                    # grab the delimiter that follows (if any)
+                    delimiters.append(
+                        parts[i + 1] if i + 1 < len(parts) else ""
+                    )
+            # odd indices are delimiters — already captured above
+
         if len(sentences) >= 3:
             seen = {}
             for s in sentences:
@@ -751,16 +794,16 @@ class AATIFOutputGate:
             if repeated:
                 reading.flags.append("REPETITION_DETECTED")
                 # Remove duplicate sentences (keep first occurrence)
-                cleaned_sentences = []
+                cleaned_parts = []
                 seen_set = set()
-                for s in sentences:
+                for s, d in zip(sentences, delimiters):
                     normalized = s.lower().strip()
                     if normalized not in seen_set or len(normalized) <= 10:
-                        cleaned_sentences.append(s)
+                        cleaned_parts.append(s + d)
                         seen_set.add(normalized)
-                text = ". ".join(cleaned_sentences)
-                if not text.endswith((".", "!", "?", "؟")):
-                    text += "."
+                text = "".join(cleaned_parts)
+                if text and not text.rstrip().endswith((".", "!", "?", "؟")):
+                    text = text.rstrip() + "."
                 reading.modifications.append(
                     f"Removed {sum(c - 1 for c in repeated.values())} "
                     f"repeated sentences"

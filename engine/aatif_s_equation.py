@@ -304,12 +304,18 @@ GATED_PROFILES = {
         "theta": 0.55, # higher threshold → more tolerant
         "desc": "Permissive gate — intent-driven, wider tolerance"
     },
+    # M2 NOTE: balanced_strict is INTENTIONALLY kept. It was calibrated
+    # during A/B testing (2026-06-19) for edge cases where the default
+    # profile missed surveillance/espionage patterns. Although its
+    # weights match default, it exists as a named profile for domain
+    # configs that need to reference it explicitly. Remove ONLY if no
+    # DOMAIN_CONFIG or external caller references "balanced_strict".
     "balanced_strict": {
         "w1": 2.0,
         "w2": 1.5,
         "alpha": 10,   # same steepness as default
-        "theta": 0.40, # tighter gate — catches surveillance/espionage cases
-        "desc": "Tighter gate — calibrated via A/B test (2026-06-19)"
+        "theta": 0.40, # same θ as default — the profile exists for naming, not divergent weights
+        "desc": "Calibrated via A/B test (2026-06-19) — identical to default, kept as named reference"
     },
 }
 

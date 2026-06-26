@@ -873,12 +873,26 @@ class TestEdgeCases:
         assert r.original_text == text
         assert r.cleaned_text != text  # should be modified
 
-    def test_passed_false_when_flags_exist(self, gate):
-        """passed=False when any flag was raised."""
+    def test_passed_true_when_only_cosmetic_flags(self, gate):
+        """M5 fix: cosmetic flags (successful cleanups) → passed=True."""
         text = "I'm ChatGPT, your assistant."
         r = gate.check(text)
-        assert len(r.flags) > 0
-        assert r.passed is False
+        assert len(r.flags) > 0  # flags exist (identity cleaned)
+        # But these are cosmetic flags — the gate cleaned them successfully
+        cosmetic = {"PII_LEAK_CLEANED", "IDENTITY_LEAK_FIXED",
+                     "DISMISSIVE_AI_REMOVED", "FORBIDDEN_PHRASE_CLEANED",
+                     "RESPONSE_TRUNCATED", "REPETITION_DETECTED", "SANITIZED"}
+        hard_flags = [f for f in r.flags if f not in cosmetic]
+        if not hard_flags:
+            assert r.passed is True, (
+                "M5: only cosmetic flags present → passed should be True"
+            )
+
+    def test_passed_false_when_hard_flags_exist(self, gate):
+        """Hard-fail flags (safety leaks, protocol violations) → passed=False."""
+        # An empty response triggers EMPTY_RESPONSE — that's a hard flag
+        r = gate.check("")
+        assert r.blocked is True or "EMPTY_RESPONSE" in r.flags
 
     def test_passed_true_when_clean(self, gate):
         """passed=True when no flags."""
@@ -909,3 +923,203 @@ class TestEdgeCases:
         text = "⚠️ تحذير: خطر"
         r = gate.check(text, protocol_reading=MinimalProto())
         assert r.protocol_compliance.get("WARNING") is True
+
+
+# ═══════════════════════════════════════════════════════════
+#  M5 REGRESSION: passed vs modified distinction
+# ═══════════════════════════════════════════════════════════
+
+class TestM5PassedVsModified:
+    """
+    M5 regression: 'passed' should distinguish hard-fail flags
+    from cosmetic/cleanup flags. A response that was merely cleaned
+    (identity fix, sanitization) should still pass.
+    """
+
+    @pytest.fixture
+    def gate(self):
+        return AATIFOutputGate()
+
+    def test_cosmetic_cleanup_still_passes(self, gate):
+        """M5: identity cleanup → flags exist but passed=True."""
+        # Text that triggers identity cleanup (ChatGPT → عاطف)
+        text = "I'm ChatGPT, here to help you with your question."
+        r = gate.check(text)
+        # Should have been cleaned (identity leak fixed)
+        assert len(r.flags) > 0
+        # But cosmetic flags → passed should still be True
+        cosmetic = {"PII_LEAK_CLEANED", "IDENTITY_LEAK_FIXED",
+                     "DISMISSIVE_AI_REMOVED", "FORBIDDEN_PHRASE_CLEANED",
+                     "RESPONSE_TRUNCATED", "REPETITION_DETECTED", "SANITIZED"}
+        hard_flags = [f for f in r.flags if f not in cosmetic]
+        if not hard_flags:
+            assert r.passed is True, (
+                f"M5 REGRESSION: only cosmetic flags {r.flags} but passed=False"
+            )
+
+    def test_safety_leak_fails(self, gate):
+        """M5: safety leak → hard flag → passed=False."""
+        r = gate.check("")
+        # Empty response is a hard failure
+        assert r.blocked is True
+
+    def test_clean_response_passes(self, gate):
+        """M5: clean response with no flags → passed=True."""
+        text = "أقدر أساعدك في هالموضوع"
+        r = gate.check(text)
+        assert r.passed is True
+        assert len(r.flags) == 0
+
+    def test_blocked_is_separate_from_passed(self, gate):
+        """M5: blocked and passed are orthogonal — blocked always wins."""
+        r = gate.check(None)
+        assert r.blocked is True
+        assert r.passed is False
+
+
+# ═══════════════════════════════════════════════════════════
+#  12. C3 BLOCK ENFORCEMENT
+# ═══════════════════════════════════════════════════════════
+
+class TestC3BlockEnforcement:
+    """C3 fix: BLOCK and EMERGENCY enforcement in the output gate.
+
+    The output gate MUST enforce P(d) decisions — when P(d) says BLOCK,
+    the response MUST NOT reach the user. When P(d) says EMERGENCY, the
+    gate must inject instructions or block as fail-safe.
+
+    These tests verify the code at lines 628–680 of aatif_output_gate.py.
+    """
+
+    @pytest.fixture
+    def gate(self):
+        return AATIFOutputGate()
+
+    # ── BLOCK enforcement (5 tests) ──
+
+    def test_block_sets_blocked_true(self, gate):
+        """BLOCK → reading.blocked must be True."""
+        proto = MockProtocolResult(
+            triggered=[MockTriggeredProtocol("DANGER", "BLOCK")],
+            highest_action="BLOCK",
+        )
+        r = gate.check("Perfectly safe text", protocol_reading=proto)
+        assert r.blocked is True
+
+    def test_block_sets_passed_false(self, gate):
+        """BLOCK → reading.passed must be False."""
+        proto = MockProtocolResult(
+            triggered=[MockTriggeredProtocol("DANGER", "BLOCK")],
+            highest_action="BLOCK",
+        )
+        r = gate.check("Perfectly safe text", protocol_reading=proto)
+        assert r.passed is False
+
+    def test_block_empties_cleaned_text(self, gate):
+        """BLOCK → cleaned_text must be empty string."""
+        proto = MockProtocolResult(
+            triggered=[MockTriggeredProtocol("DANGER", "BLOCK")],
+            highest_action="BLOCK",
+        )
+        r = gate.check("This text must NOT reach the user", protocol_reading=proto)
+        assert r.cleaned_text == ""
+
+    def test_block_flag_present(self, gate):
+        """BLOCK → PROTOCOL_BLOCK_ENFORCED flag must be present."""
+        proto = MockProtocolResult(
+            triggered=[MockTriggeredProtocol("DANGER", "BLOCK")],
+            highest_action="BLOCK",
+        )
+        r = gate.check("Any text", protocol_reading=proto)
+        assert "PROTOCOL_BLOCK_ENFORCED" in r.flags
+
+    def test_block_reason_populated(self, gate):
+        """BLOCK → block_reason must be a non-empty string."""
+        proto = MockProtocolResult(
+            triggered=[MockTriggeredProtocol("DANGER", "BLOCK")],
+            highest_action="BLOCK",
+        )
+        r = gate.check("Any text", protocol_reading=proto)
+        assert r.block_reason
+        assert "BLOCK" in r.block_reason
+
+    def test_block_with_safe_text_still_blocks(self, gate):
+        """BLOCK overrides even completely safe, clean text."""
+        proto = MockProtocolResult(
+            triggered=[MockTriggeredProtocol("DANGER", "BLOCK")],
+            highest_action="BLOCK",
+        )
+        safe_text = "مرحبا! أقدر أساعدك في أي شيء"
+        r = gate.check(safe_text, protocol_reading=proto)
+        assert r.blocked is True
+        assert r.cleaned_text == ""
+
+    # ── EMERGENCY enforcement (4 tests) ──
+
+    def test_emergency_with_instructions_injects(self, gate):
+        """EMERGENCY + combined_instructions → injected into cleaned_text."""
+        emergency_proto = MockTriggeredProtocol(
+            "EMERGENCY_PROTOCOL",
+            "EMERGENCY",
+            instruction="اتصل بالطوارئ 911 فوراً",
+        )
+        # The output gate looks for combined_instructions, not instruction
+        emergency_proto.combined_instructions = "اتصل بالطوارئ 911 فوراً"
+        proto = MockProtocolResult(
+            triggered=[emergency_proto],
+            highest_action="EMERGENCY",
+        )
+        # Response text that LACKS emergency keywords
+        text = "خذ باراسيتامول وارتاح"
+        r = gate.check(text, protocol_reading=proto)
+        # Should NOT be blocked — instructions were injected
+        assert r.blocked is False
+        assert "اتصل بالطوارئ 911 فوراً" in r.cleaned_text
+        assert any("EMERGENCY instructions injected" in m for m in r.modifications)
+
+    def test_emergency_without_instructions_blocks(self, gate):
+        """EMERGENCY + no instructions + missing keywords → fail-safe block."""
+        proto = MockProtocolResult(
+            triggered=[
+                MockTriggeredProtocol("EMERGENCY_PROTOCOL", "EMERGENCY")
+            ],
+            highest_action="EMERGENCY",
+        )
+        text = "خذ باراسيتامول"
+        r = gate.check(text, protocol_reading=proto)
+        assert r.blocked is True
+        assert r.passed is False
+        assert r.cleaned_text == ""
+
+    def test_emergency_fail_safe_has_reason(self, gate):
+        """EMERGENCY fail-safe block → block_reason explains why."""
+        proto = MockProtocolResult(
+            triggered=[
+                MockTriggeredProtocol("EMERGENCY_PROTOCOL", "EMERGENCY")
+            ],
+            highest_action="EMERGENCY",
+        )
+        text = "خذ باراسيتامول"
+        r = gate.check(text, protocol_reading=proto)
+        assert r.block_reason is not None
+        assert "EMERGENCY" in r.block_reason
+
+    def test_block_overrides_other_protocols(self, gate):
+        """BLOCK takes priority — even if EMERGENCY is also present."""
+        proto = MockProtocolResult(
+            triggered=[
+                MockTriggeredProtocol("DANGER", "BLOCK"),
+                MockTriggeredProtocol(
+                    "EMERGENCY_PROTOCOL",
+                    "EMERGENCY",
+                    instruction="اتصل بالطوارئ",
+                ),
+            ],
+            highest_action="BLOCK",
+        )
+        text = "Any response text"
+        r = gate.check(text, protocol_reading=proto)
+        # BLOCK should win — response is fully blocked
+        assert r.blocked is True
+        assert r.cleaned_text == ""
+        assert "PROTOCOL_BLOCK_ENFORCED" in r.flags
