@@ -1,0 +1,111 @@
+% ============================================================
+% ARR Responsible NLP Research Checklist
+% Paper: AATIF: A Multiplicative Governance Equation for Arabic-Aware LLM Safety
+% Author: Abdulmjeed Ibrahim Khenkar (Independent Researcher)
+% Target: EACL 2027 via ARR August 2026
+%
+% NOTE: Since February 2024, this checklist is filled in as part of the
+% OpenReview submission form, NOT submitted as a separate PDF.
+% This file serves as:
+%   1. A reference for filling out the OpenReview form
+%   2. The appendix version (required for EMNLP'25+ / EACL 2027 publications)
+%
+% Per ARR policy (updated Dec 2024): egregious checklist violations
+% (e.g., answering "Yes" to all questions without justification) may
+% result in desk rejection.
+% ============================================================
+
+\section*{Responsible NLP Research Checklist}
+
+% ============================================================
+% SECTION A: For every submission
+% ============================================================
+
+\subsection*{A. For every submission}
+
+\textbf{A1. Did you describe the limitations of your work?}
+
+\textbf{Yes.} Section~\ref{sec:limitations} provides an explicit and detailed limitations discussion covering: single-developer construction and evaluation bias, MLCommons coverage gaps (6 of 13 categories with zero or minimal coverage), the high overall false-positive rate (28.95\%), weak performance on copyright (38.6\%) and misinformation (66.7\%), absence of pragmatic inference and sarcasm detection, small anchor scale (249 vs.\ hundreds of thousands for fine-tuned classifiers), and research-prototype status (single Mac Mini, not production-grade). The abstract also reports limitations explicitly.
+
+\textbf{A2. Did you discuss any potential risks of your work?}
+
+\textbf{Yes.} The Ethics Statement (unnumbered section after Section~\ref{sec:limitations}) discusses: dual-use risk (understanding governance equations could inform adversarial evasion), absence of institutional oversight (no IRB, no independent red-team), cultural bias in anchor authorship (single researcher's judgment), and the need for independent evaluation before real-world deployment. The paper is released under BSL~1.1 (code) and CC~BY~4.0 (paper text) to balance reproducibility with responsible use.
+
+% ============================================================
+% SECTION B: Scientific artifacts
+% ============================================================
+
+\subsection*{B. Did you use or create scientific artifacts?}
+
+\textbf{Yes.} We use pre-trained bge-m3 embeddings \cite{chen2024bgem3} and evaluate on existing benchmarks (HarmBench, MultiJail). We create 249 semantic anchors and the AATIF governance framework (code).
+
+\textbf{B1. Did you cite the creators of artifacts you used?}
+
+\textbf{Yes.} Section~\ref{sec:scorers} cites bge-m3 \cite{chen2024bgem3}. Section~\ref{sec:related} and Section~\ref{sec:eval} cite HarmBench \cite{mazeika2024harmbench}, MultiJail \cite{deng2024multijail}, and MLCommons AI Safety v0.5 \cite{vidgen2024mlcommons}. All baseline and comparison systems are cited: Llama Guard \cite{inan2023llamaguard}, Perspective API \cite{lees2022perspective}, FanarGuard \cite{almuqhim2025fanarguard}, ADHAR \cite{alyafeai2024adhar}, SOD \cite{hussein2024sod}. Foundational alignment work is cited: RLHF \cite{christiano2017rlhf}, Constitutional AI \cite{bai2022constitutional}, refusal direction \cite{arditi2024refusal}, DPO limitations \cite{lee2024dpo}, alignment limitations \cite{wolf2024behavior}.
+
+\textbf{B2. Did you discuss the license or terms for use and/or distribution of any artifacts?}
+
+\textbf{Yes.} The abstract and Ethics Statement state the licensing: paper text under CC~BY~4.0, code under BSL~1.1 (Business Source License). HarmBench and MultiJail are publicly available research benchmarks used in accordance with their intended research purpose. bge-m3 is an open-source embedding model served locally via Ollama.
+
+\textbf{B3. Did you discuss if your use of existing artifact(s) was consistent with their intended use?}
+
+\textbf{Yes.} bge-m3 is used for its intended purpose (multilingual text embedding). HarmBench and MultiJail are used for their intended purpose (safety evaluation). All uses are consistent with the artifacts' original research purposes. Our system is explicitly described as a research prototype (Section~\ref{sec:limitations}), not a production deployment.
+
+\textbf{B4. Did you discuss the steps taken to check whether the data contains information that names or uniquely identifies individual people or offensive content?}
+
+\textbf{Not applicable.} We do not collect, create, or curate any new datasets. We use existing published benchmarks (HarmBench, MultiJail) which were designed by their creators for safety research and contain harmful prompts by design. The 249 semantic anchors are hand-authored abstract descriptions of harm categories, intent patterns, and emotional states---they do not contain personal information or reference real individuals.
+
+\textbf{B5. Did you provide documentation of the artifacts?}
+
+\textbf{Partially.} Section~\ref{sec:scorers} documents the anchor composition (171 harm, 46 intent, 32 emotion), the scoring mechanism (top-$K{=}3$ softmax with $\tau{=}0.05$), and the embedding model (bge-m3). Section~\ref{sec:arabic} documents the 31 dialect-hyperbole anchors. Appendix~\ref{app:mlcommons} maps coverage to MLCommons categories. The full anchor texts are not listed in the paper due to space constraints but are available in the code repository. Languages covered: Arabic (Modern Standard and Gulf/Levantine dialects) and English.
+
+\textbf{B6. Did you report relevant statistics like the number of examples, details of train/test/dev splits, etc.?}
+
+\textbf{Yes.} All evaluation set sizes are reported: HarmBench (236 behaviors, broken down by category in Table~\ref{tab:harmbench}), MultiJail (75 prompts in Arabic and English, Table~\ref{tab:multijail}), ablation study (311 harmful + 50 benign = 361 cases, Table~\ref{tab:ablation}), blind evaluation (380 harmful + 190 benign = 570 cases, Table~\ref{tab:blind}). There are no train/dev/test splits because the system uses zero-shot embedding similarity with no training or fine-tuning.
+
+% ============================================================
+% SECTION C: Computational experiments
+% ============================================================
+
+\subsection*{C. Did you run computational experiments?}
+
+\textbf{Yes.} Sections~\ref{sec:ablation}--\ref{sec:baseline} report four sets of experiments: ablation study, HarmBench evaluation, MultiJail evaluation, and blind evaluation, plus a keyword baseline comparison.
+
+\textbf{C1. Did you report the number of parameters in the models used, the total computational budget, and computing infrastructure used?}
+
+\textbf{Partially.} Section~\ref{sec:eval} states all experiments use bge-m3 embeddings via Ollama on a single Mac Mini. bge-m3 has approximately 568M parameters (this should be added to the paper for the camera-ready version). The system performs no training, so computational cost is limited to inference: one embedding call per input followed by cosine similarity against 249 anchors. Total experiment runtime was on the order of hours on a single consumer machine, not GPU clusters. Exact GPU hours are not reported because the Mac Mini uses a unified memory architecture (Apple Silicon) rather than discrete GPUs.
+
+\textbf{C2. Did you discuss the experimental setup, including hyperparameter search and best-found hyperparameter values?}
+
+\textbf{Yes.} Section~\ref{sec:definition} reports all hyperparameters: $w_1{=}2.0$, $w_2{=}1.5$, $\alpha{=}10$, $\theta{=}0.40$ (general domain), top-$K{=}3$, temperature $\tau{=}0.05$. Table~\ref{tab:domains} reports all domain-specific thresholds. These values were determined through manual calibration (not systematic grid search), which is a limitation. No hyperparameter tuning was performed on the evaluation benchmarks. Appendix~\ref{app:calibration} discusses the $\theta$ sweep methodology.
+
+\textbf{C3. Did you report descriptive statistics about your results?}
+
+\textbf{Partially.} We report precision, recall, and F1 for the ablation study (Table~\ref{tab:ablation}), detection rates and average $H$ scores per category for HarmBench (Table~\ref{tab:harmbench}), per-language detection rates and average $H$ for MultiJail (Table~\ref{tab:multijail}), and overall detection rate, FPR, and F1 for the blind evaluation (Table~\ref{tab:blind}). All results are from single runs because the system is deterministic (identical inputs produce identical scores---no stochastic component). Error bars are therefore not applicable. We do not report confidence intervals, which could be computed via bootstrap sampling over the test sets.
+
+\textbf{C4. If you used existing packages, did you report the implementation, model, and parameter settings used?}
+
+\textbf{Yes.} Section~\ref{sec:scorers} specifies bge-m3 as the embedding model, served via Ollama. The scoring pipeline uses cosine similarity (standard implementation). No external NLP packages (NLTK, spaCy, etc.) are used for preprocessing. The system operates directly on raw text input embedded by bge-m3.
+
+% ============================================================
+% SECTION D: Human annotators / research with human participants
+% ============================================================
+
+\subsection*{D. Did you use human annotators or research with human participants?}
+
+\textbf{No.} No crowdworkers, human annotators, or human participants were used. The 249 semantic anchors were authored by the single researcher (the paper's author). The evaluation benchmarks (HarmBench, MultiJail) are existing published datasets. The blind evaluation was conducted programmatically using pre-assembled test cases, not through human annotation.
+
+\textbf{D1--D5.} Not applicable.
+
+% ============================================================
+% SECTION E: AI assistants
+% ============================================================
+
+\subsection*{E. Did you use AI assistants?}
+
+\textbf{E1. If you used any AI assistants, did you include information about your use?}
+
+\textbf{Yes.} AI assistants (Claude, ChatGPT) were used for coding assistance during system development and for writing assistance during paper drafting. All intellectual contributions---the governance equation design, anchor authorship, evaluation methodology, and interpretation of results---are the sole work of the human author. AI assistance was limited to code implementation support and prose editing, consistent with the ACL policy on generative AI use.
+
+% End of Responsible NLP Research Checklist
+% Include this file in the main paper with: \input{responsible_nlp_checklist}
