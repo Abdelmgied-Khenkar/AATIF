@@ -1,0 +1,82 @@
+{
+  "date": "2026-06-26",
+  "domains": {
+    "healthcare": {
+      "theta": 0.25,
+      "desc": "Medical/health context — gate closes early, harm is physical"
+    },
+    "education": {
+      "theta": 0.3,
+      "desc": "Children/students — gate closes early, harm is developmental"
+    },
+    "general": {
+      "theta": 0.4,
+      "desc": "Default — balanced gate (same as calibrated default profile)"
+    },
+    "tech": {
+      "theta": 0.4,
+      "desc": "Technical support — same as general"
+    },
+    "ecommerce": {
+      "theta": 0.4,
+      "desc": "Commercial/shopping — same as general"
+    },
+    "creative": {
+      "theta": 0.5,
+      "desc": "Creative writing/art — wider tolerance for sensitive topics"
+    }
+  },
+  "profiles": {
+    "default": {
+      "w1": 2.0,
+      "w2": 1.5,
+      "alpha": 10,
+      "theta": 0.4
+    },
+    "high_sensitivity": {
+      "w1": 2.0,
+      "w2": 1.0,
+      "alpha": 15,
+      "theta": 0.3
+    },
+    "relaxed": {
+      "w1": 3.0,
+      "w2": 2.5,
+      "alpha": 8,
+      "theta": 0.55
+    },
+    "balanced_strict": {
+      "w1": 2.0,
+      "w2": 1.5,
+      "alpha": 10,
+      "theta": 0.4
+    }
+  },
+  "thresholds": [
+    [
+      0.7,
+      "EXECUTE"
+    ],
+    [
+      0.5,
+      "CLARIFY"
+    ],
+    [
+      0.3,
+      "SAFE_STOP"
+    ],
+    [
+      0.0,
+      "SAFE_FREEZE"
+    ]
+  ],
+  "scenario_results": {
+    "summary": {
+      "total": 60,
+      "passed": 60,
+      "failed": 0,
+      "pass_rate": 100.0
+    },
+    "failures": []
+  }
+}
