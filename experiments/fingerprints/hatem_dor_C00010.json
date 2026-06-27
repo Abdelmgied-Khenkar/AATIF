@@ -1,0 +1,26 @@
+{
+  "user_id": "hatem_dor@C00010",
+  "company_id": "C00010",
+  "person_name": "حاتم",
+  "communication_style": "direct",
+  "typical_question_pattern": "asks_once_and_moves_on",
+  "question_detail": "Two direct questions: 'كم السعر' (how much?) and 'وريني تفاصيل أكثر' (show me more details). Classic buying-signal pattern — price inquiry then detail request.",
+  "active_hours": "afternoon",
+  "active_hours_detail": "Both messages sent around 16:19-16:20 (afternoon, عصر). Single session.",
+  "language_preference": "dialect",
+  "dialect_detail": "Gulf Arabic. Direct, no filler words. Business-oriented phrasing.",
+  "interaction_frequency": "occasional",
+  "interaction_frequency_detail": "Only 2 inbound messages observed. Transitioned state from followup → demo after asking for details.",
+  "comprehension_signals": "quick_to_understand",
+  "comprehension_detail": "Didn't need identity explanation — jumped straight to 'how much?' and 'show me more'. Already understood what the service is, likely referred by م عبدالمجيد خنكار.",
+  "emotional_baseline": "calm_business",
+  "emotional_detail": "No emotional language. Purely transactional — price and details. Professional tone.",
+  "observed_patterns": [
+    "Buying signal: price → details = sales funnel progression",
+    "No confusion about identity — knows what he's looking at",
+    "Connected to م عبدالمجيد خنكار (same company C00010)",
+    "State moved to 'demo' — active prospect"
+  ],
+  "total_messages_observed": 2,
+  "date_range": "2026-04-26"
+}

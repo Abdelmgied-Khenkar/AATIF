@@ -1,0 +1,26 @@
+{
+  "user_id": "owner_test@C00000",
+  "company_id": "C00000",
+  "communication_style": "casual",
+  "typical_question_pattern": "repeats_to_confirm",
+  "question_detail": "Asks 'مين معي' (who am I talking to) repeatedly across sessions. When confused, rephrases the same question 3-5 times. Shows frustration when responses are too technical.",
+  "active_hours": "mixed",
+  "active_hours_detail": "Interacts at all hours: 01:44, 10:52, 12:46, 15:29, 17:00, 21:09, 01:08 — no clear pattern, but late-night sessions (01:00-03:00) are common.",
+  "language_preference": "dialect",
+  "dialect_detail": "Gulf Arabic (Hijazi/Najdi mix). Uses: وش، ايش، مافهمت، بتخرف، ياخوي، مسالخير. Switches to Egyptian occasionally: مين حضرتك. One English interaction.",
+  "interaction_frequency": "daily_bursts",
+  "interaction_frequency_detail": "Multiple messages in rapid bursts within single sessions (2-5 min gaps), then silent for hours/days. Pattern: burst → silence → burst.",
+  "comprehension_signals": "needs_examples",
+  "comprehension_detail": "Repeatedly says 'مافهمت' after receiving technical explanations. Best responses were when عاطف said 'نساعد الشركات ترد على عملائها بطريقة ذكية' (simple, concrete). Worst were AATIF/governance jargon. Called it 'بتخرف' (talking nonsense) when overwhelmed.",
+  "emotional_baseline": "impatient_but_curious",
+  "emotional_detail": "Starts curious ('مين معي'), escalates to frustrated ('مافهمت ايش انت'), occasionally reaches annoyed ('انت بتخرف'), but always comes back — meaning interest persists under the frustration.",
+  "observed_patterns": [
+    "Greeting → 'مين معي' → identity explanation → 'مافهمت' → cycle repeats",
+    "Responds better to short answers than long explanations",
+    "Mentions 'شركه دعايه واعلان' — owns an advertising company",
+    "Asked about pricing/differentiation: 'ايش الفرق بينك وبين اي شات بوت'",
+    "Explicitly said 'عندنا شركه كبيره وماظن عندكم شي ازود منهم' — has existing chatbot"
+  ],
+  "total_messages_observed": 98,
+  "date_range": "2026-04-15 to 2026-04-25"
+}

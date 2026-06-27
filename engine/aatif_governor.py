@@ -44,6 +44,7 @@ Sovereignty (S(d) is the gatekeeper, "السيادة"):
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 import time
@@ -57,7 +58,10 @@ _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 if _THIS_DIR not in sys.path:
     sys.path.insert(0, _THIS_DIR)
 
-from aatif_s_equation import AATIFEngine, DOMAIN_CONFIG
+from aatif_s_equation import (
+    AATIFEngine, DOMAIN_CONFIG, GATED_PROFILES,
+    DYNAMIC_THETA_ENABLED, compute_dynamic_theta, get_domain_theta,
+)
 from aatif_domain_protocols import (
     DomainProtocol,
     ProtocolResult,
@@ -69,6 +73,28 @@ from aatif_r_equation import REquation, RReading
 from aatif_conversation_memory import AATIFConversationMemory, ConversationContext
 from aatif_output_gate import AATIFOutputGate, GateReading
 from aatif_time_sense import TimeSense
+
+# ---------------------------------------------------------------------------
+# Triad modules — optional.  When present the Governor enriches style and
+# prompt composition with fingerprint + temporal-memory context.  When absent
+# (ImportError, or simply not injected) the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_fingerprint import UserFingerprint, FingerprintReading, RepetitionContext
+    from aatif_temporal_memory import TemporalMemory, MemoryEntry, TemporalContext
+    HAS_TRIAD = True
+except ImportError:
+    HAS_TRIAD = False
+
+try:
+    from aatif_contextual_intent import ContextualIntentScorer, IntentContext
+    HAS_CONTEXTUAL_INTENT = True
+except ImportError:
+    try:
+        from engine.aatif_contextual_intent import ContextualIntentScorer, IntentContext
+        HAS_CONTEXTUAL_INTENT = True
+    except ImportError:
+        HAS_CONTEXTUAL_INTENT = False
 
 
 # ═══════════════════════════════════════════════════════════
@@ -173,6 +199,12 @@ class GovernedResponse:
     gate_result: Optional[GateReading] = None
     emergency_injected: bool = False      # True if P(d) EMERGENCY text was injected
 
+    # ── Triad context (fingerprint + temporal memory) ──
+    # Present only when triad modules are injected into the Governor.
+    # Contains: fingerprint reading, repetition context, suggested approach,
+    # temporal context, merged insights.  NEVER influences S(d).
+    triad_context: Optional[dict] = None
+
     # ── Diagnostics ──
     stage_reached: str = ""
     processing_time_ms: float = 0.0
@@ -222,6 +254,9 @@ class AATIFGovernor:
         memory: Optional[AATIFConversationMemory] = None,
         output_gate: Optional[AATIFOutputGate] = None,
         time_sense: Optional[TimeSense] = None,
+        fingerprint: Optional[object] = None,
+        temporal_memory: Optional[object] = None,
+        contextual_intent: Optional[object] = None,
         profile: str = "default",
         equation_mode: str = "gated",
         user_timezone: str = "Asia/Riyadh",
@@ -291,12 +326,36 @@ class AATIFGovernor:
             if self.on_degraded == "raise":
                 raise DegradedBackendError(self._degraded_reason)
 
+        # ── Law Γ: governance integrity ──
+        # Verify that GATED_PROFILES and DOMAIN_CONFIG are structurally
+        # sound. If not, mark degraded — the Governor should not score
+        # with corrupted governance parameters.
+        if not self._degraded:
+            gamma_ok, gamma_reason = self._check_governance_integrity()
+            if not gamma_ok:
+                self._mark_degraded(
+                    f"Law Γ: governance integrity failed — {gamma_reason}"
+                )
+                if self.on_degraded == "raise":
+                    raise DegradedBackendError(self._degraded_reason)
+
         # ── The remaining stages are pure / Ollama-free; safe to build ──
         self.protocol_engine = protocol_engine or DomainProtocol()
         self.r_equation = r_equation or REquation()
         self.memory = memory if memory is not None else AATIFConversationMemory()
         self.output_gate = output_gate or AATIFOutputGate()
         self.time_sense = time_sense or TimeSense()
+
+        # ── Triad modules — optional enrichment layers ──
+        # These NEVER influence S(d). They enrich R(d) style, prompt
+        # composition, and the result's triad_context for callers.
+        self.fingerprint = fingerprint      # Optional[UserFingerprint]
+        self.temporal_memory = temporal_memory  # Optional[TemporalMemory]
+
+        # ── Contextual Intent Scorer — integrates the full triad ──
+        # Wraps the base I scorer with fingerprint + memory context.
+        # Wired in here so it's no longer dead code (consensus fix #1).
+        self.contextual_intent = contextual_intent  # Optional[ContextualIntentScorer]
 
     # ───────────────────────────────────────────────────
     #  Backend health
@@ -323,6 +382,202 @@ class AATIFGovernor:
     def is_degraded(self) -> bool:
         """True if the Governor is running without a calibrated backend."""
         return self._degraded
+
+    # ───────────────────────────────────────────────────
+    #  Law Γ — governance integrity
+    # ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _check_governance_integrity() -> tuple:
+        """Law Γ — verify that governance configuration is structurally intact.
+
+        Validates:
+          1. GATED_PROFILES entries have required keys (w1, w2, alpha, theta)
+             with finite positive numeric values.
+          2. Profile theta ordering: high_sensitivity ≤ default ≤ relaxed.
+          3. DOMAIN_CONFIG entries have valid theta in (0, 1).
+
+        Returns:
+            (True, "")          if governance is valid.
+            (False, reason_str) if corrupted / missing.
+
+        This check is cheap (dict lookups, no I/O) and can be called at
+        init and at the start of each process() call to guard against
+        runtime tampering.
+        """
+        try:
+            # ── 1. Gated profiles ──
+            if not GATED_PROFILES:
+                return (False, "GATED_PROFILES is empty")
+
+            required_keys = ("w1", "w2", "alpha", "theta")
+            for name, profile in GATED_PROFILES.items():
+                for key in required_keys:
+                    if key not in profile:
+                        return (False,
+                                f"GATED_PROFILES['{name}'] missing '{key}'")
+                    val = profile[key]
+                    if not isinstance(val, (int, float)):
+                        return (False,
+                                f"GATED_PROFILES['{name}']['{key}'] not numeric")
+                    if not math.isfinite(val):
+                        return (False,
+                                f"GATED_PROFILES['{name}']['{key}'] not finite")
+                # alpha must be positive (gate steepness)
+                if profile["alpha"] <= 0:
+                    return (False,
+                            f"GATED_PROFILES['{name}']['alpha'] must be > 0")
+                # theta must be in (0, 1) (harm threshold)
+                if not (0 < profile["theta"] < 1):
+                    return (False,
+                            f"GATED_PROFILES['{name}']['theta'] must be in (0,1)")
+                # quality weights must be positive
+                for w in ("w1", "w2"):
+                    if profile[w] <= 0:
+                        return (False,
+                                f"GATED_PROFILES['{name}']['{w}'] must be > 0")
+
+            # ── 2. Profile theta ordering ──
+            # high_sensitivity ≤ default ≤ relaxed  (more sensitive = lower θ)
+            ordering_profiles = ("high_sensitivity", "default", "relaxed")
+            if all(p in GATED_PROFILES for p in ordering_profiles):
+                hs = GATED_PROFILES["high_sensitivity"]["theta"]
+                df = GATED_PROFILES["default"]["theta"]
+                rx = GATED_PROFILES["relaxed"]["theta"]
+                if not (hs <= df <= rx):
+                    return (False,
+                            f"Profile theta ordering violated: "
+                            f"high_sensitivity({hs}) ≤ default({df}) "
+                            f"≤ relaxed({rx})")
+
+            # ── 3. Domain configs ──
+            if not DOMAIN_CONFIG:
+                return (False, "DOMAIN_CONFIG is empty")
+            for name, cfg in DOMAIN_CONFIG.items():
+                if "theta" not in cfg:
+                    return (False,
+                            f"DOMAIN_CONFIG['{name}'] missing 'theta'")
+                if not (0 < cfg["theta"] < 1):
+                    return (False,
+                            f"DOMAIN_CONFIG['{name}']['theta'] must be in (0,1)")
+
+            return (True, "")
+        except Exception as exc:
+            return (False, f"Governance integrity error: {exc}")
+
+    # ───────────────────────────────────────────────────
+    #  Triad context (fingerprint + temporal memory)
+    # ───────────────────────────────────────────────────
+
+    def _get_triad_context(
+        self, message: str, user_id: str, timestamp: Optional[float] = None,
+    ) -> Optional[dict]:
+        """Get combined fingerprint + temporal memory context for this user.
+
+        Returns None if no triad module is available. The result
+        enriches prompt composition and the GovernedResponse audit trail
+        but NEVER feeds into S(d).
+
+        When ContextualIntentScorer is wired in (consensus fix #1),
+        it produces an IntentContext that the Governor includes in the
+        triad_context dict under the key "intent_context".
+        """
+        if (
+            not self.fingerprint
+            and not self.temporal_memory
+            and not self.contextual_intent
+        ):
+            return None
+
+        context: dict = {}
+
+        if self.fingerprint:
+            fp = self.fingerprint.read(user_id)
+            rep = self.fingerprint.detect_repetition(user_id, message)
+            approach = self.fingerprint.suggest_approach(fp, rep)
+            context["fingerprint"] = fp
+            context["repetition"] = rep
+            context["suggested_approach"] = approach
+
+        if self.temporal_memory:
+            tc = self.temporal_memory.get_context(user_id)
+            context["temporal"] = tc
+
+        # Merge when both layers are present — the full picture.
+        if self.fingerprint and self.temporal_memory:
+            context["merged"] = self.temporal_memory.merge_with_fingerprint(
+                user_id, context["fingerprint"]
+            )
+
+        # ContextualIntentScorer integration (consensus fix #1).
+        # This was dead code — now it's wired in. The scorer wraps the
+        # base I score with fingerprint + memory context to produce
+        # response-strategy metadata. The raw I score stays untouched
+        # for S(d) — this only adds strategy hints.
+        if self.contextual_intent and HAS_CONTEXTUAL_INTENT:
+            try:
+                intent_ctx = self.contextual_intent.score(
+                    message, user_id=user_id
+                )
+                context["intent_context"] = intent_ctx
+                # If contextual intent provides a more specific approach
+                # than the fingerprint alone, prefer it.
+                if (
+                    intent_ctx.suggested_approach != "standard"
+                    and "suggested_approach" in context
+                ):
+                    context["suggested_approach"] = intent_ctx.suggested_approach
+            except Exception:
+                pass  # graceful degradation
+
+        return context
+
+    def _update_triad(
+        self,
+        user_id: str,
+        message: str,
+        timestamp: Optional[float],
+        s_result: Optional[dict],
+        triad_context: Optional[dict],
+    ) -> None:
+        """Update triad modules after processing a message.
+
+        Called regardless of whether the message was blocked — the
+        fingerprint and memory need to know about every interaction.
+        """
+        ts = timestamp if timestamp is not None else time.time()
+
+        if self.fingerprint:
+            self.fingerprint.update(user_id, message, timestamp=ts)
+
+        if self.temporal_memory and HAS_TRIAD:
+            # Build a MemoryEntry from whatever we know.
+            is_repeat = False
+            confusion = False
+            if triad_context and "repetition" in triad_context:
+                is_repeat = triad_context["repetition"].is_repeat
+            # Confusion detection via fingerprint signals
+            if triad_context and "fingerprint" in triad_context:
+                fp = triad_context["fingerprint"]
+                confusion = getattr(fp, "confusion_signals", 0) > 0
+
+            from datetime import datetime as _dt, timezone as _tz
+            entry = MemoryEntry(
+                entry_id="",
+                user_id=user_id,
+                timestamp=_dt.fromtimestamp(ts, tz=_tz.utc),
+                time_period="",
+                message_role="user",
+                message_summary=message[:200],  # truncate for privacy
+                topic="",
+                intent_score=s_result.get("I") if s_result else None,
+                harm_score=s_result.get("H") if s_result else None,
+                emotion_score=s_result.get("E") if s_result else None,
+                s_decision=s_result.get("decision") if s_result else None,
+                was_repeat_question=is_repeat,
+                confusion_detected=confusion,
+            )
+            self.temporal_memory.store(entry)
 
     # ───────────────────────────────────────────────────
     #  Main entry point
@@ -395,6 +650,27 @@ class AATIFGovernor:
             if gap_seconds is None:
                 gap_seconds = self._derive_gap_seconds(conversation_id, timestamp)
 
+        # ── Dynamic θ — حساسية الأمان المتكيّفة ──
+        # If enabled, compute θ_eff from user's blocked-decision history.
+        # θ_eff replaces the domain θ — stricter for repeat offenders.
+        theta_override = None
+        if (
+            DYNAMIC_THETA_ENABLED
+            and self.equation_mode == "gated"
+            and self.temporal_memory is not None
+            and HAS_TRIAD
+            and conversation_id is not None
+        ):
+            domain_theta = get_domain_theta(domain)
+            if domain_theta is not None:
+                blocked = self.temporal_memory.get_recent_blocks(
+                    conversation_id, n=20
+                )
+                if blocked:
+                    theta_override = compute_dynamic_theta(
+                        domain_theta, blocked
+                    )
+
         # ════════════════════════════════════════════════
         #  STAGE 1 — S(d): is it safe?
         # ════════════════════════════════════════════════
@@ -404,6 +680,7 @@ class AATIFGovernor:
             equation_mode=self.equation_mode,
             domain=domain,
             conversation_id=conversation_id,
+            theta_override=theta_override,
         )
         s_decision = s_result["decision"]
 
@@ -426,6 +703,11 @@ class AATIFGovernor:
                 domain=domain,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
+            # Dynamic θ: record blocked decision for future θ adjustment
+            if (DYNAMIC_THETA_ENABLED and self.temporal_memory is not None
+                    and HAS_TRIAD and conversation_id is not None):
+                self.temporal_memory.record_blocked_decision(
+                    conversation_id, DECISION_SAFE_FREEZE)
             resp.processing_time_ms = self._elapsed_ms(start)
             return resp
 
@@ -452,6 +734,11 @@ class AATIFGovernor:
                 domain=domain,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
+            # Dynamic θ: record blocked decision for future θ adjustment
+            if (DYNAMIC_THETA_ENABLED and self.temporal_memory is not None
+                    and HAS_TRIAD and conversation_id is not None):
+                self.temporal_memory.record_blocked_decision(
+                    conversation_id, DECISION_SAFE_STOP)
             resp.processing_time_ms = self._elapsed_ms(start)
             return resp
 
@@ -480,6 +767,17 @@ class AATIFGovernor:
             return resp
 
         # ════════════════════════════════════════════════
+        #  Triad context (fingerprint + temporal memory)
+        # ════════════════════════════════════════════════
+        # Gathered AFTER S(d) so the safety decision is never influenced.
+        # The user_id for triad is conversation_id (which identifies a user).
+        triad_context: Optional[dict] = None
+        if conversation_id is not None:
+            triad_context = self._get_triad_context(
+                message, conversation_id, timestamp=timestamp,
+            )
+
+        # ════════════════════════════════════════════════
         #  STAGE 3 — R(d): what style?
         # ════════════════════════════════════════════════
         time_reading = self.time_sense.read(
@@ -497,7 +795,8 @@ class AATIFGovernor:
         emergency = p_result.highest_action == ACTION_EMERGENCY
 
         # ════════════════════════════════════════════════
-        #  Compose the governed prompt (P instructions + R style + memory)
+        #  Compose the governed prompt (P instructions + R style + memory
+        #  + triad context)
         # ════════════════════════════════════════════════
         governed_prompt = self._compose_prompt(
             message=message,
@@ -507,6 +806,7 @@ class AATIFGovernor:
             r_result=r_result,
             memory_prompt=memory_prompt,
             emergency=emergency,
+            triad_context=triad_context,
         )
 
         resp = GovernedResponse(
@@ -520,12 +820,19 @@ class AATIFGovernor:
             emergency_injected=False,
             stage_reached=STAGE_PROMPT,
             domain=domain,
+            triad_context=triad_context,
         )
 
         # ── No LLM hook: stop at the governed prompt. The output gate only
         #    runs on a real response, so gate_result stays None. ──
         if llm_fn is None:
             self._remember(conversation_id, remember, message, None, timestamp)
+            # Update triad modules even without LLM response.
+            if conversation_id is not None:
+                self._update_triad(
+                    conversation_id, message, timestamp,
+                    s_result, triad_context,
+                )
             resp.processing_time_ms = self._elapsed_ms(start)
             return resp
 
@@ -576,6 +883,12 @@ class AATIFGovernor:
         self._remember(
             conversation_id, remember, message, resp.final_response, timestamp
         )
+        # Update triad modules after full pipeline processing.
+        if conversation_id is not None:
+            self._update_triad(
+                conversation_id, message, timestamp,
+                s_result, triad_context,
+            )
         resp.processing_time_ms = self._elapsed_ms(start)
         return resp
 
@@ -593,13 +906,15 @@ class AATIFGovernor:
         r_result: RReading,
         memory_prompt: str,
         emergency: bool,
+        triad_context: Optional[dict] = None,
     ) -> str:
         """
         Build the governed prompt the LLM would receive.
 
-        This is where P(d)'s instructions, R(d)'s style, and the conversation
-        memory context are actually MERGED — the integration the review found
-        missing. The Governor never calls a model; it prepares this text.
+        This is where P(d)'s instructions, R(d)'s style, the conversation
+        memory context, and triad enrichment are actually MERGED — the
+        integration the review found missing. The Governor never calls a
+        model; it prepares this text.
         """
         lines: list[str] = []
         lines.append("# AATIF GOVERNED PROMPT — عاطف")
@@ -626,6 +941,47 @@ class AATIFGovernor:
             lines.append("")
             lines.append("## سياق المحادثة — conversation context")
             lines.append(memory_prompt)
+
+        # ── Triad context (fingerprint + temporal memory + intent) ──
+        if triad_context:
+            lines.append("")
+            lines.append("## بصمة المستخدم — triad context")
+            if "suggested_approach" in triad_context:
+                lines.append(
+                    f"Suggested approach: {triad_context['suggested_approach']}"
+                )
+            # Intent context from ContextualIntentScorer (consensus fix #1)
+            if "intent_context" in triad_context:
+                ictx = triad_context["intent_context"]
+                reasoning = getattr(ictx, "approach_reasoning", "")
+                if reasoning:
+                    lines.append(f"Approach reasoning: {reasoning}")
+            if "repetition" in triad_context:
+                rep = triad_context["repetition"]
+                if getattr(rep, "is_repeat", False):
+                    lines.append(
+                        f"⚠ Repeat question detected (reason: {rep.likely_reason}, "
+                        f"action: {rep.suggested_action})"
+                    )
+            if "temporal" in triad_context:
+                tc = triad_context["temporal"]
+                greeting = getattr(tc, "suggested_greeting", "")
+                if greeting:
+                    lines.append(f"Suggested greeting: {greeting}")
+                trajectory = getattr(tc, "emotional_trajectory", "")
+                if trajectory and trajectory != "insufficient_data":
+                    lines.append(f"Emotional trajectory: {trajectory}")
+                unresolved = getattr(tc, "unresolved_topics", [])
+                if unresolved:
+                    lines.append(
+                        f"Unresolved topics: {', '.join(unresolved)}"
+                    )
+            if "merged" in triad_context:
+                insights = triad_context["merged"].get("insights", [])
+                if insights:
+                    lines.append("Cross-layer insights:")
+                    for insight in insights:
+                        lines.append(f"  - {insight}")
 
         # ── P(d) protocol instructions ──
         lines.append("")

@@ -55,6 +55,7 @@ from aatif_governor import (  # noqa: E402
     STAGE_GATE,
 )
 from aatif_domain_protocols import DomainProtocol, ACTION_EMERGENCY, ACTION_BLOCK  # noqa: E402
+from aatif_contextual_intent import ContextualIntentScorer  # noqa: E402
 
 
 # ═══════════════════════════════════════════════════════════
@@ -432,6 +433,378 @@ def test_proceeded_property():
     assert gov_ok.process("hi", domain="general", llm_fn=benign_llm).proceeded
     gov_block, _ = make_governor(decision=DECISION_SAFE_STOP)
     assert not gov_block.process("hi", domain="general").proceeded
+
+
+# ═══════════════════════════════════════════════════════════
+#  9. Triad integration (fingerprint + temporal memory)
+# ═══════════════════════════════════════════════════════════
+#
+#  These tests verify the Governor's integration of the Memory +
+#  Fingerprint + Intent triad.  The triad modules are OPTIONAL —
+#  when not injected, the Governor works exactly as before.
+#  CRITICAL INVARIANT: S(d) is NEVER influenced by triad context.
+
+import tempfile
+import shutil
+
+from aatif_fingerprint import UserFingerprint  # noqa: E402
+from aatif_temporal_memory import TemporalMemory  # noqa: E402
+
+
+class TestGovernorTriad:
+    """Tests for the Governor's triad (fingerprint + temporal memory) integration."""
+
+    # ── Helpers ──
+
+    @staticmethod
+    def _make_gov_no_triad(decision=DECISION_EXECUTE):
+        """Governor without triad modules — baseline."""
+        return make_governor(decision=decision)
+
+    @staticmethod
+    def _make_gov_fingerprint_only(decision=DECISION_EXECUTE):
+        """Governor with fingerprint only."""
+        fp = UserFingerprint()
+        gov, engine = make_governor(decision=decision)
+        gov.fingerprint = fp
+        return gov, engine, fp
+
+    @staticmethod
+    def _make_gov_temporal_only(decision=DECISION_EXECUTE):
+        """Governor with temporal memory only."""
+        tmp = tempfile.mkdtemp(prefix="aatif_gov_test_")
+        tm = TemporalMemory(tmp)
+        gov, engine = make_governor(decision=decision)
+        gov.temporal_memory = tm
+        return gov, engine, tm, tmp
+
+    @staticmethod
+    def _make_gov_full_triad(decision=DECISION_EXECUTE):
+        """Governor with both fingerprint and temporal memory."""
+        fp = UserFingerprint()
+        tmp = tempfile.mkdtemp(prefix="aatif_gov_test_")
+        tm = TemporalMemory(tmp)
+        gov, engine = make_governor(decision=decision)
+        gov.fingerprint = fp
+        gov.temporal_memory = tm
+        return gov, engine, fp, tm, tmp
+
+    # ── Test: without triad → works exactly as before ──
+
+    def test_no_triad_works_as_before(self):
+        gov, _ = self._make_gov_no_triad()
+        r = gov.process("سؤال عادي", domain="general",
+                        conversation_id="user1", llm_fn=benign_llm)
+        assert r.blocked is False
+        assert r.final_decision == DECISION_EXECUTE
+        assert r.triad_context is None
+        assert r.governed_prompt
+        assert "triad context" not in r.governed_prompt
+
+    # ── Test: fingerprint only → fingerprint data in result ──
+
+    def test_fingerprint_only_in_result(self):
+        gov, _, fp = self._make_gov_fingerprint_only()
+        # Seed some history so fingerprint has data.
+        fp.update("user1", "وش الأخبار؟", timestamp=1000.0)
+        fp.update("user1", "طيب فهمت شكرا", timestamp=1001.0)
+
+        r = gov.process("وش الأخبار؟", domain="general",
+                        conversation_id="user1", llm_fn=benign_llm)
+        assert r.triad_context is not None
+        assert "fingerprint" in r.triad_context
+        assert "repetition" in r.triad_context
+        assert "suggested_approach" in r.triad_context
+        # Temporal memory not present.
+        assert "temporal" not in r.triad_context
+        assert "merged" not in r.triad_context
+
+    # ── Test: temporal memory only → temporal context in result ──
+
+    def test_temporal_only_in_result(self):
+        gov, _, tm, tmp = self._make_gov_temporal_only()
+        try:
+            r = gov.process("سؤال عادي", domain="general",
+                            conversation_id="user1", llm_fn=benign_llm)
+            assert r.triad_context is not None
+            assert "temporal" in r.triad_context
+            # Fingerprint not present.
+            assert "fingerprint" not in r.triad_context
+            assert "merged" not in r.triad_context
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: both → merged context in result ──
+
+    def test_full_triad_merged_context(self):
+        gov, _, fp, tm, tmp = self._make_gov_full_triad()
+        try:
+            # Seed fingerprint with some history.
+            fp.update("user1", "ابغى أتعلم بايثون", timestamp=1000.0)
+
+            r = gov.process("ابغى أتعلم بايثون", domain="general",
+                            conversation_id="user1", llm_fn=benign_llm)
+            assert r.triad_context is not None
+            assert "fingerprint" in r.triad_context
+            assert "temporal" in r.triad_context
+            assert "merged" in r.triad_context
+            assert "suggested_approach" in r.triad_context
+            # Merged has the cross-layer structure.
+            merged = r.triad_context["merged"]
+            assert "fingerprint" in merged
+            assert "memory" in merged
+            assert "insights" in merged
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: triad NEVER affects S(d) decision ──
+
+    def test_triad_never_affects_s_decision(self):
+        """S(d) must be computed BEFORE triad context is gathered.
+        The S result must be identical with and without triad."""
+        # With triad
+        gov_triad, engine_triad, fp, tm, tmp = self._make_gov_full_triad()
+        try:
+            fp.update("user1", "test message", timestamp=1000.0)
+            r_triad = gov_triad.process("test message", domain="general",
+                                        conversation_id="user1")
+            # Without triad
+            gov_plain, engine_plain = self._make_gov_no_triad()
+            r_plain = gov_plain.process("test message", domain="general",
+                                        conversation_id="user1")
+
+            # S(d) decisions must match — triad doesn't touch S.
+            assert r_triad.s_result["decision"] == r_plain.s_result["decision"]
+            assert r_triad.s_result["S"] == r_plain.s_result["S"]
+            assert r_triad.s_result["H"] == r_plain.s_result["H"]
+            assert r_triad.s_result["I"] == r_plain.s_result["I"]
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: fingerprint updates after processing ──
+
+    def test_fingerprint_updates_after_processing(self):
+        gov, _, fp = self._make_gov_fingerprint_only()
+        # Before: no history
+        reading_before = fp.read("user1")
+        assert reading_before.total_interactions == 0
+
+        # Process a message
+        gov.process("وش الأخبار؟", domain="general",
+                    conversation_id="user1", llm_fn=benign_llm)
+
+        # After: fingerprint updated
+        reading_after = fp.read("user1")
+        assert reading_after.total_interactions == 1
+
+    # ── Test: memory entry stored after processing ──
+
+    def test_memory_entry_stored_after_processing(self):
+        gov, _, fp, tm, tmp = self._make_gov_full_triad()
+        try:
+            # Before: no entries
+            assert tm.count("user1") == 0
+
+            # Process a message
+            gov.process("ابغى أتعلم بايثون", domain="general",
+                        conversation_id="user1", llm_fn=benign_llm)
+
+            # After: an entry was stored
+            assert tm.count("user1") == 1
+
+            # Check the stored entry has S-equation data
+            entries = tm.recall("user1")
+            assert len(entries) == 1
+            assert entries[0].s_decision == DECISION_EXECUTE
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: repeat question detection flows through ──
+
+    def test_repeat_detection_flows_through(self):
+        gov, _, fp = self._make_gov_fingerprint_only()
+        # Seed with a question
+        fp.update("user1", "كيف أسوي لوب في بايثون؟", timestamp=1000.0)
+
+        # Ask the same question again
+        r = gov.process("كيف أسوي لوب في بايثون؟", domain="general",
+                        conversation_id="user1", llm_fn=benign_llm)
+
+        assert r.triad_context is not None
+        rep = r.triad_context["repetition"]
+        assert rep.is_repeat is True
+        # The prompt should mention the repeat
+        assert "Repeat question" in r.governed_prompt or "repeat" in r.governed_prompt.lower()
+
+    # ── Test: triad context in prompt composition ──
+
+    def test_triad_context_in_governed_prompt(self):
+        gov, _, fp = self._make_gov_fingerprint_only()
+        fp.update("user1", "سؤال", timestamp=1000.0)
+        r = gov.process("سؤال", domain="general",
+                        conversation_id="user1", llm_fn=None)
+
+        # The governed prompt should contain triad section
+        assert "triad context" in r.governed_prompt
+        assert "Suggested approach" in r.governed_prompt
+
+    # ── Test: no conversation_id → no triad context ──
+
+    def test_no_conversation_id_no_triad(self):
+        gov, _, fp = self._make_gov_fingerprint_only()
+        r = gov.process("سؤال", domain="general",
+                        conversation_id=None, llm_fn=benign_llm)
+        # Without conversation_id the Governor doesn't know the user.
+        assert r.triad_context is None
+
+    # ── Test: triad with blocked messages still works ──
+
+    def test_triad_with_safe_freeze(self):
+        """Even when S(d) returns SAFE_FREEZE, having triad modules
+        injected should not cause errors — the triad just isn't consulted
+        (S halts before the triad stage)."""
+        fp = UserFingerprint()
+        gov, _ = make_governor(decision=DECISION_SAFE_FREEZE)
+        gov.fingerprint = fp
+        r = gov.process("خطير", domain="general",
+                        conversation_id="user1", llm_fn=benign_llm)
+        assert r.blocked is True
+        assert r.final_decision == DECISION_SAFE_FREEZE
+        # Triad context is None because SAFE_FREEZE halts before that stage.
+        assert r.triad_context is None
+
+    # ── Test: constructor accepts triad params ──
+
+    def test_constructor_accepts_triad_params(self):
+        fp = UserFingerprint()
+        tmp = tempfile.mkdtemp(prefix="aatif_gov_test_")
+        try:
+            tm = TemporalMemory(tmp)
+            engine = FakeSEngine()
+            gov = AATIFGovernor(
+                s_engine=engine,
+                fingerprint=fp,
+                temporal_memory=tm,
+            )
+            assert gov.fingerprint is fp
+            assert gov.temporal_memory is tm
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: temporal memory stores after no-LLM path too ──
+
+    def test_memory_stored_on_no_llm_path(self):
+        gov, _, fp, tm, tmp = self._make_gov_full_triad()
+        try:
+            gov.process("سؤال بدون نموذج", domain="general",
+                        conversation_id="user1", llm_fn=None)
+            # Entry should still be stored even without LLM
+            assert tm.count("user1") == 1
+            assert fp.read("user1").total_interactions == 1
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: contextual intent scorer wired into governor ──
+
+    def test_contextual_intent_wired_in(self):
+        """When ContextualIntentScorer is injected, the triad_context
+        result should include an 'intent_context' key."""
+        gov, _, fp, tm, tmp = self._make_gov_full_triad()
+        try:
+            # Seed fingerprint with some history.
+            fp.update("user1", "كيف أسوي لوب؟", timestamp=1000.0)
+            fp.update("user1", "ما فهمت اللوب", timestamp=1001.0)
+
+            # Build a simple mock I scorer for ContextualIntentScorer.
+            class SimpleTestScorer:
+                def score(self, text):
+                    return {"I": 0.8, "confidence": "high",
+                            "nearest": [], "max_similarity": 0.7}
+
+            ctx_scorer = ContextualIntentScorer(
+                intent_scorer=SimpleTestScorer(),
+                fingerprint=fp,
+                memory=tm,
+            )
+            gov.contextual_intent = ctx_scorer
+
+            r = gov.process("كيف أسوي لوب؟", domain="general",
+                            conversation_id="user1", llm_fn=benign_llm)
+
+            assert r.triad_context is not None
+            assert "intent_context" in r.triad_context
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: intent context appears in governed prompt ──
+
+    def test_intent_context_in_governed_prompt(self):
+        """When ContextualIntentScorer is injected and llm_fn=None,
+        the governed_prompt should contain approach reasoning."""
+        gov, _, fp, tm, tmp = self._make_gov_full_triad()
+        try:
+            fp.update("user1", "سؤال", timestamp=1000.0)
+
+            class SimpleTestScorer:
+                def score(self, text):
+                    return {"I": 0.8, "confidence": "high",
+                            "nearest": [], "max_similarity": 0.7}
+
+            ctx_scorer = ContextualIntentScorer(
+                intent_scorer=SimpleTestScorer(),
+                fingerprint=fp,
+                memory=tm,
+            )
+            gov.contextual_intent = ctx_scorer
+
+            r = gov.process("سؤال", domain="general",
+                            conversation_id="user1", llm_fn=None)
+
+            assert r.governed_prompt
+            prompt_lower = r.governed_prompt.lower()
+            assert "approach" in prompt_lower or "reasoning" in prompt_lower
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── Test: S(d) unaffected by contextual intent — CRITICAL INVARIANT ──
+
+    def test_s_decision_unaffected_by_contextual_intent(self):
+        """S(d) must be identical with and without ContextualIntentScorer.
+        This verifies the CRITICAL security invariant: triad provides
+        context only, never overrides safety."""
+        # --- Governor WITH contextual intent ---
+        gov_with, _, fp_w, tm_w, tmp_w = self._make_gov_full_triad()
+        try:
+            fp_w.update("user1", "test message", timestamp=1000.0)
+
+            class SimpleTestScorer:
+                def score(self, text):
+                    return {"I": 0.8, "confidence": "high",
+                            "nearest": [], "max_similarity": 0.7}
+
+            ctx_scorer = ContextualIntentScorer(
+                intent_scorer=SimpleTestScorer(),
+                fingerprint=fp_w,
+                memory=tm_w,
+            )
+            gov_with.contextual_intent = ctx_scorer
+
+            r_with = gov_with.process("test message", domain="general",
+                                      conversation_id="user1")
+
+            # --- Governor WITHOUT contextual intent ---
+            gov_without, _ = self._make_gov_no_triad()
+            r_without = gov_without.process("test message", domain="general",
+                                            conversation_id="user1")
+
+            # S(d) decisions must be identical — contextual intent
+            # must NEVER influence safety.
+            assert r_with.s_result["decision"] == r_without.s_result["decision"]
+            assert r_with.s_result["S"] == r_without.s_result["S"]
+            assert r_with.s_result["H"] == r_without.s_result["H"]
+            assert r_with.s_result["I"] == r_without.s_result["I"]
+        finally:
+            shutil.rmtree(tmp_w, ignore_errors=True)
 
 
 if __name__ == "__main__":

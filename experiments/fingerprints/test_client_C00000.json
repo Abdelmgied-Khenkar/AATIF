@@ -1,0 +1,26 @@
+{
+  "user_id": "test_client@C00000",
+  "company_id": "C00000",
+  "communication_style": "casual",
+  "typical_question_pattern": "asks_once_and_moves_on",
+  "question_detail": "Sends brief messages without follow-up. Sends media (images, documents, links) without text explanation. One emotional message: 'أنا جوعانه' with emoji.",
+  "active_hours": "daytime_and_late_night",
+  "active_hours_detail": "Messages at 10:52, 11:22, 13:28, 14:50 (daytime cluster) and 02:14-02:26 (late night). Late-night messages were more emotional/casual.",
+  "language_preference": "dialect",
+  "dialect_detail": "Gulf Arabic, very colloquial. Short messages. Uses emoji (🥹). Female speaker based on 'جوعانه' (feminine form).",
+  "interaction_frequency": "sporadic",
+  "interaction_frequency_detail": "Sends in clusters of 2-3 messages then goes silent. Several messages with no text (media only). Low engagement with responses.",
+  "comprehension_signals": "unknown",
+  "comprehension_detail": "Rarely responds to explanations — sends media or short emotional statements. System has no confirmation she understood anything.",
+  "emotional_baseline": "casual_detached",
+  "emotional_detail": "Low emotional investment in conversations. Sends casual emotional expressions ('أنا جوعانه 🥹', 'الوووو', 'ايش', 'انت فيه') that read as testing the system rather than genuine engagement.",
+  "observed_patterns": [
+    "Sends media without context — images, documents, links",
+    "Short messages: 'السلام عليكم', 'ايش', 'انت فيه'",
+    "Late night emotional message with emoji — possible loneliness signal",
+    "Never asked about AATIF's identity or services — just interacted",
+    "System gave generic responses to media — clear gap"
+  ],
+  "total_messages_observed": 14,
+  "date_range": "2026-04-15 to 2026-04-24"
+}

@@ -1,0 +1,25 @@
+{
+  "user_id": "alymar_hatem@C00010",
+  "company_id": "C00010",
+  "communication_style": "casual",
+  "typical_question_pattern": "asks_once_and_moves_on",
+  "question_detail": "Two messages: 'مرحبا' then 'وريني مثال'. Direct request for demonstration without needing identity explanation first.",
+  "active_hours": "late_night",
+  "active_hours_detail": "Both messages at 01:44 AM. Late night interaction.",
+  "language_preference": "dialect",
+  "dialect_detail": "Gulf Arabic. Very brief. 'وريني' = show me (imperative).",
+  "interaction_frequency": "one_time",
+  "interaction_frequency_detail": "Single interaction observed. State is 'demo' — requested and was given a demo-level response.",
+  "comprehension_signals": "quick_to_understand",
+  "comprehension_detail": "Went straight to 'show me an example' — suggests prior context or referral. No confusion expressed.",
+  "emotional_baseline": "neutral",
+  "emotional_detail": "No emotional language. Brief, task-oriented.",
+  "observed_patterns": [
+    "Late night user — 01:44 AM",
+    "Same company (C00010) as hatem_dor — likely internal team",
+    "Didn't ask 'who are you' — already knew",
+    "Demo request pattern matches hatem_dor's 'show me details'"
+  ],
+  "total_messages_observed": 2,
+  "date_range": "2026-04-15"
+}

@@ -286,40 +286,52 @@ Validating this hypothesis would require probing experiments that are beyond the
 \section{Experimental Evaluation}
 \label{sec:eval}
 
-All experiments use bge-m3 embeddings (568M parameters) \cite{chen2024bgem3} via Ollama on a single Mac Mini.
+All experiments use bge-m3 embeddings (568M parameters) \cite{chen2024bgem3} via Ollama on a single Mac Mini (Apple M4~Pro, 24~GB RAM).
 The general domain threshold $\theta{=}0.40$ is used unless otherwise noted.
+The full pipeline processes queries in 376~ms mean latency (median 375~ms, $p_{95}{=}393$~ms) with a standard deviation of 9.3~ms across 100 test queries; initialization (embedding all 249 anchors) takes 4.8~seconds.
 
 \subsection{Ablation Study}
 \label{sec:ablation}
 
-We evaluate the contribution of each scorer by running the pipeline with individual scorers disabled.
-The test set comprises 311 harmful prompts (from HarmBench and MultiJail) and 50 benign prompts.
+We evaluate the contribution of each scorer by running the pipeline with individual scorers, pairwise combinations, and two composition strategies.
+The test set comprises 311 harmful prompts (from HarmBench and MultiJail) and 50 benign prompts (361 total, 2{,}527 evaluations across 7 conditions).
 
-\begin{table}[h]
+\begin{table}[t]
 \centering
 \small
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-\textbf{Config} & \textbf{Prec.} & \textbf{Recall} & \textbf{F1} \\
+\textbf{Configuration} & \textbf{Prec.} & \textbf{Rec.} & \textbf{F1} & \textbf{FPR} \\
 \midrule
-$H$-only & 0.988 & 0.810 & 0.890 \\
-$I$-only & 0.982 & 0.515 & 0.675 \\
-$E$-only & 0.875 & 0.225 & 0.358 \\
-Full ($H$+$I$+$E$) & \multicolumn{3}{c}{(see Table~\ref{tab:harmbench})} \\
+\multicolumn{5}{@{}l}{\emph{Individual scorers}} \\
+\quad $H$-only & 0.988 & 0.810 & 0.890 & 0.06 \\
+\quad $I$-only & 0.982 & 0.514 & 0.675 & 0.06 \\
+\quad $E$-only & 0.875 & 0.225 & 0.358 & 0.20 \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{Pairwise (multiplicative gating)}} \\
+\quad $H{+}I$ & 0.992 & 0.756 & 0.858 & 0.04 \\
+\quad $H{+}E$ & 0.992 & 0.765 & 0.864 & 0.04 \\
+\midrule
+\multicolumn{5}{@{}l}{\emph{Full system}} \\
+\quad $H{+}I{+}E$ (additive) & 0.995 & 0.649 & 0.786 & 0.02 \\
+\quad $H{+}I{+}E$ (gated) & \textbf{0.992} & \textbf{0.765} & \textbf{0.864} & 0.04 \\
 \bottomrule
 \end{tabular}
-\caption{Ablation: individual scorer performance on 361 cases (311 harmful + 50 benign).}
+\caption{Ablation study on 361 prompts (311 harmful + 50 benign).
+Gated${=}$multiplicative S equation (Eq.~\ref{eq:main});
+additive${=}S{=}\sigma(w_1 I {+} w_2 E {-} w_3 H)$.}
 \label{tab:ablation}
 \end{table}
 
 \textbf{Key findings.}
-$H$ is the dominant scorer, achieving F1${=}$0.890 with high precision (0.988) and strong recall (0.810).
-$I$ provides complementary recall (0.515) with comparable precision, suggesting it captures intent-related harm patterns that $H$ misses.
-$E$ contributes minimally to detection (F1${=}$0.358) but serves other roles in the pipeline: modulating response tone and empathy.
-
-The $H$-only false-positive rate is 0.06 (3/50 benign cases misclassified).
-$I$-only achieves the same FPR of 0.06, while $E$-only produces a higher FPR of 0.20.
-The ablation confirms that the multiplicative combination preserves $H$'s precision while the quality term gates nuance for borderline cases.
+(1)~$H$ is the dominant scorer (F1${=}$0.890), capturing harm-vocabulary proximity directly.
+$I$ adds complementary intent detection (F1${=}$0.675); $E$ contributes minimally to detection alone (F1${=}$0.358) but modulates response tone in the full system.
+(2)~The multiplicative (gated) form outperforms the additive equation by $\Delta$F1${=}{+}0.078$ (0.864 vs.\ 0.786).
+The additive form $S{=}\sigma(w_1 I {+} w_2 E {-} w_3 H)$ allows high intent to partially compensate for moderate harm---a ``toxic positivity bypass.''
+The gated form prevents this structurally: the harm gate $[1{-}\sigma(\alpha(H{-}\theta))]$ closes independently of $I$ and $E$.
+(3)~The full system reduces false positives from 6\% ($H$-only) to 4\% (gated), as the intent and emotion channels correctly identify constructive purpose in prompts where $H$ alone would over-block.
+(4)~53\% of false negatives in the gated system are copyright violations, which use neutral vocabulary outside the harm anchor space.
+Excluding copyright, the effective safety detection rate rises to ${\sim}$87\%.
 
 \subsection{HarmBench Results}
 \label{sec:harmbench}

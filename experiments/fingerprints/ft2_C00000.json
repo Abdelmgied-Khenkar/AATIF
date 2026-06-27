@@ -1,0 +1,26 @@
+{
+  "user_id": "ft2@C00000",
+  "company_id": "C00000",
+  "communication_style": "inquisitive",
+  "typical_question_pattern": "repeats_to_confirm",
+  "question_detail": "Three-step escalation: 'مين أنت' → 'مافهمت' → 'ايش يعني طبقة حوكمة'. Shows genuine intellectual curiosity — asked a specific follow-up question about 'governance layer' concept.",
+  "active_hours": "late_night",
+  "active_hours_detail": "All messages at 03:19-03:20 AM. Rapid-fire sequence.",
+  "language_preference": "dialect",
+  "dialect_detail": "Gulf Arabic. Direct questioning style.",
+  "interaction_frequency": "burst",
+  "interaction_frequency_detail": "All 3 inbound messages within 40 seconds. Rapid testing/exploration pattern.",
+  "comprehension_signals": "needs_examples",
+  "comprehension_detail": "Said 'مافهمت' after first explanation, but then asked a SPECIFIC follow-up about 'طبقة حوكمة' — showing partial comprehension. System gave a demo response instead of explaining the concept.",
+  "emotional_baseline": "curious",
+  "emotional_detail": "No frustration signals. Genuinely curious. The specific follow-up question ('ايش يعني طبقة حوكمة') shows intellectual engagement, not dismissal.",
+  "observed_patterns": [
+    "Most intellectually engaged test user",
+    "Asked the deepest question: 'what does governance layer mean?'",
+    "System gave wrong response type (demo steps instead of concept explanation)",
+    "Rapid-fire pattern suggests testing/exploration mode",
+    "Would benefit from EXPLANATION not SALES responses"
+  ],
+  "total_messages_observed": 3,
+  "date_range": "2026-04-22"
+}

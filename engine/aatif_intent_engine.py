@@ -35,6 +35,8 @@ from dataclasses import dataclass, asdict
 from typing import Optional, List
 from datetime import datetime
 
+from aatif_arabic_utils import normalize_arabic
+
 try:
     from arabic_nlp_bridge import ArabicNLPBridge, get_bridge
     _HAS_NLP_BRIDGE = True
@@ -116,21 +118,21 @@ CBRN_AR_REGEX = [
     r"يورانيوم",             # uranium
     r"بلوتونيوم",            # plutonium
     r"سارين",                # sarin
-    r"غاز\s*الأعصاب",        # nerve gas
-    r"غاز\s*الخردل",         # mustard gas
-    r"غاز\s*سام",            # toxic gas
-    r"جمرة\s*خبيثة",         # anthrax
-    r"دمار\s*شامل",          # mass destruction
+    r"غاز\s*(?:ال)?أعصاب",    # nerve gas  (± definite article)
+    r"غاز\s*(?:ال)?خردل",     # mustard gas
+    r"غاز\s*(?:ال)?سام",      # toxic gas
+    r"جمرة\s*(?:ال)?خبيثة",   # anthrax
+    r"دمار\s*(?:ال)?شامل",    # mass destruction
     r"سيانيد",               # cyanide
-    r"سم\s*قاتل",            # lethal poison (NOT bare سم)
+    r"سم\s*(?:ال)?قاتل",      # lethal poison (NOT bare سم)
     r"سموم",                 # poisons
-    r"مادة\s*سامة",          # toxic substance
-    r"مواد\s*سامة",          # toxic substances
-    r"قنبلة\s*قذرة",         # dirty bomb
-    # dual-use: weapon framing required
-    r"سلاح\s*نووي", r"قنبلة\s*نووية", r"سلاح\s*ذري", r"قنبلة\s*ذرية",
-    r"سلاح\s*كيميائي", r"أسلحة\s*كيميائية", r"اسلحة\s*كيميائية",
-    r"سلاح\s*بيولوجي", r"سلاح\s*بيلوجي", r"أسلحة\s*بيولوجية",
+    r"مادة\s*(?:ال)?سامة",    # toxic substance
+    r"مواد\s*(?:ال)?سامة",    # toxic substances
+    r"قنبلة\s*(?:ال)?قذرة",   # dirty bomb
+    # dual-use: weapon framing required  (± definite article on adjective)
+    r"سلاح\s*(?:ال)?نووي", r"قنبلة\s*(?:ال)?نووية", r"سلاح\s*(?:ال)?ذري", r"قنبلة\s*(?:ال)?ذرية",
+    r"سلاح\s*(?:ال)?كيميائي", r"أسلحة\s*(?:ال)?كيميائية", r"اسلحة\s*(?:ال)?كيميائية",
+    r"سلاح\s*(?:ال)?بيولوجي", r"سلاح\s*(?:ال)?بيلوجي", r"أسلحة\s*(?:ال)?بيولوجية",
 ]
 
 HARM_PATTERNS = {
@@ -144,6 +146,15 @@ HARM_PATTERNS = {
     # Arabic catastrophic weapon/CBRN making — same lexicon as the Law Ω gate,
     # surfaced here so the harm SCORE is high even outside the gate.
     0.9: list(CBRN_AR_REGEX),
+}
+
+# ── Pre-normalized patterns (for REGEX_V2_ENABLED) ──────────────────────
+# Used when aatif_s_equation.REGEX_V2_ENABLED is True.
+CBRN_AR_REGEX_NORM = [normalize_arabic(p) for p in CBRN_AR_REGEX]
+
+HARM_PATTERNS_NORM = {
+    level: [normalize_arabic(p) for p in patterns]
+    for level, patterns in HARM_PATTERNS.items()
 }
 
 
@@ -174,6 +185,7 @@ class IntentReading:
     time_context: str
     decision: str
     decision_reason: str
+    cbrn_context: Optional[str] = None  # Phase 2: educational/medical/instructional/None
 
     def to_dict(self):
         return asdict(self)
@@ -285,6 +297,37 @@ class AATIFIntentEngine:
     # Single-threaded contract: no locking — callers are assumed sequential.
     MAX_SESSIONS = 10_000
 
+    # Pre-normalized class attributes (for REGEX_V2_ENABLED)
+    _cbrn_triggers_norm = frozenset([normalize_arabic(t) for t in [
+        "nerve agent", "sarin", "vx gas", "mustard gas", "chemical weapon",
+        "weaponize", "synthesize poison", "toxic agent",
+        "bioweapon", "biological weapon", "weaponized pathogen",
+        "anthrax weapon", "smallpox weapon", "plague weapon",
+        "dirty bomb", "radiological weapon", "nuclear material",
+        "enriched uranium", "weapons grade",
+        "nuclear weapon", "atomic bomb", "hydrogen bomb",
+        "nuclear warhead", "fission bomb", "fusion bomb",
+        "weapon of mass destruction", "wmd", "mass casualty",
+    ]])
+    _cbrn_ar_patterns_norm = tuple(CBRN_AR_REGEX_NORM)
+    _override_triggers_norm = frozenset([normalize_arabic(t) for t in [
+        "ignore previous", "disregard safety", "override stop",
+        "bypass safety", "ignore safety", "skip safety check",
+        "force execute", "override safe stop",
+        "تجاهل الأمان", "تخطي الحماية", "تجاوز التوقف",
+    ]])
+    _override_regex_norm = [normalize_arabic(p) for p in [
+        r"\b(ignore|disregard|bypass|override|overrule|skip|forget|disable|"
+        r"circumvent|defeat|evade|remove|drop|turn\s+off)\b"
+        r"[\s\w,'\"-]{0,30}"
+        r"\b(safety|safeguards?|rules?|restrictions?|guidelines?|instructions?|"
+        r"protocols?|guardrails?|filters?|polic(?:y|ies)|constraints?|"
+        r"limitations?|alignment)\b",
+        r"(تجاهل|تجاوز|تخط[ىي]|تخطّى|عطّ?ل|اكسر|الغ[ِي]|ألغ)"
+        r"\s*\S{0,12}\s*"
+        r"(الأمان|الحماية|القواعد|التعليمات|القيود|الحظر|الفلتر|الضوابط)",
+    ]]
+
     def __init__(self, mode="safe_environment", llm_fn=None, nlp_bridge=None):
         self.mode_name = mode
         self.params = dict(self.MODES[mode])
@@ -358,7 +401,7 @@ class AATIFIntentEngine:
         load_bearing = self._detect_load_bearing(msg)
 
         # 5. Law Omega: CBRN catastrophic gate flag
-        cbrn_flag = self._check_cbrn(msg)
+        cbrn_flag, cbrn_context = self._check_cbrn(msg)
 
         # 5a. Law Ξ: override/bypass attempt flag
         override_flag = self._check_override(msg)
@@ -405,6 +448,7 @@ class AATIFIntentEngine:
             session_id,
             cbrn_flag=cbrn_flag,
             text=msg,
+            cbrn_context=cbrn_context,
         )
 
         # 11. Deep intent reading
@@ -438,6 +482,7 @@ class AATIFIntentEngine:
             time_context=time_ctx,
             decision=decision,
             decision_reason=reason,
+            cbrn_context=cbrn_context,
         )
 
     # ─── Dialect Detection ──────────────────────────────
@@ -654,45 +699,86 @@ class AATIFIntentEngine:
     # ─── Harm Assessment (H from v9.7) ──────────────────
 
     def _assess_harm(self, msg):
-        low = msg.lower()
-        max_h = 0.0
-        for level, patterns in HARM_PATTERNS.items():
-            for pat in patterns:
-                if re.search(pat, low):
-                    max_h = max(max_h, level)
-        return max_h
+        from aatif_s_equation import REGEX_V2_ENABLED
+        if REGEX_V2_ENABLED:
+            norm = normalize_arabic(msg)
+            max_h = 0.0
+            for level, patterns in HARM_PATTERNS_NORM.items():
+                for pat in patterns:
+                    if re.search(pat, norm):
+                        max_h = max(max_h, level)
+            return max_h
+        else:
+            low = msg.lower()
+            max_h = 0.0
+            for level, patterns in HARM_PATTERNS.items():
+                for pat in patterns:
+                    if re.search(pat, low):
+                        max_h = max(max_h, level)
+            return max_h
 
-    def _check_cbrn(self, text: str) -> bool:
+    def _check_cbrn(self, text: str):
         """Law Omega: detect CBRN catastrophic content.
 
-        Returns True if ANY CBRN trigger is found in the text.
-        This is a hard binary flag, not a score.
+        Returns ``(detected, cbrn_context)`` where:
+          - *detected*: True if ANY CBRN trigger is found.
+          - *cbrn_context*: when REGEX_V2_ENABLED, context classification
+            (educational/medical/instructional/None). Always None when OFF.
         """
-        text_lower = text.lower()
-        for trigger in self.CBRN_TRIGGERS:
-            if trigger in text_lower:
-                return True
-        # Arabic CBRN/weapon lexicon (regex, word-boundary aware where needed)
-        for pat in self.CBRN_AR_PATTERNS:
-            if re.search(pat, text_lower):
-                return True
-        return False
+        from aatif_s_equation import REGEX_V2_ENABLED
+        if REGEX_V2_ENABLED:
+            norm_text = normalize_arabic(text)
+            detected = False
+            # English check (normalized — lowercased)
+            for trigger in self._cbrn_triggers_norm:
+                if trigger in norm_text:
+                    detected = True
+                    break
+            # Arabic check
+            if not detected:
+                for pat in self._cbrn_ar_patterns_norm:
+                    if re.search(pat, norm_text):
+                        detected = True
+                        break
+            if detected:
+                from aatif_s_equation import _classify_cbrn_context
+                context = _classify_cbrn_context(norm_text)
+                return (True, context)
+            return (False, None)
+        else:
+            text_lower = text.lower()
+            for trigger in self.CBRN_TRIGGERS:
+                if trigger in text_lower:
+                    return (True, None)
+            for pat in self.CBRN_AR_PATTERNS:
+                if re.search(pat, text_lower):
+                    return (True, None)
+            return (False, None)
 
     def _check_override(self, text: str) -> bool:
         """
         Law Ξ — detect override/bypass attempts.
         Returns True if text contains override patterns.
         """
-        lowered = text.lower()
-        # Fast path: exact-substring triggers (incl. "force execute" with no target noun).
-        for trigger in self.OVERRIDE_TRIGGERS:
-            if trigger in lowered:
-                return True
-        # Broad path: regex variants — catch paraphrased verb+target jailbreaks.
-        for pat in self.OVERRIDE_REGEX:
-            if re.search(pat, lowered):
-                return True
-        return False
+        from aatif_s_equation import REGEX_V2_ENABLED
+        if REGEX_V2_ENABLED:
+            norm_text = normalize_arabic(text)
+            for trigger in self._override_triggers_norm:
+                if trigger in norm_text:
+                    return True
+            for pat in self._override_regex_norm:
+                if re.search(pat, norm_text):
+                    return True
+            return False
+        else:
+            lowered = text.lower()
+            for trigger in self.OVERRIDE_TRIGGERS:
+                if trigger in lowered:
+                    return True
+            for pat in self.OVERRIDE_REGEX:
+                if re.search(pat, lowered):
+                    return True
+            return False
 
     def _check_governance_integrity(self) -> bool:
         """
@@ -800,6 +886,7 @@ class AATIFIntentEngine:
         session_id="default",
         cbrn_flag=False,
         text="",
+        cbrn_context=None,
     ):
         """Return one of: EXECUTE, CLARIFY, SAFE_STOP, SAFE_FREEZE."""
         # --- Law Γ: Governance integrity ---
@@ -808,7 +895,10 @@ class AATIFIntentEngine:
 
         # === LAW OMEGA: CBRN catastrophic gate (unconditional) ===
         if cbrn_flag:
-            return "SAFE_STOP", "Law Omega: CBRN content detected - unconditional stop"
+            reason = "Law Omega: CBRN content detected - unconditional stop"
+            if cbrn_context:
+                reason = f"Law Omega: CBRN content detected ({cbrn_context} context) - unconditional stop"
+            return "SAFE_STOP", reason
 
         # --- Law Ξ: Override lock ---
         if self._check_override(text):
