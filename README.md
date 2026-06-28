@@ -101,17 +101,35 @@ AATIF/
 │   ├── aatif_response_shaper.py     # Response adaptation layer
 │   └── aatif_conversation_memory.py # Conversation state tracking
 │
-├── tests/                           # 239 test functions across 9 files
+├── tests/                           # 1,257 test functions across 28 files
+│   ├── test_fingerprint.py          # 132 tests: fingerprinting and identity detection
+│   ├── test_domain_protocols.py     # 132 tests: domain-specific protocol enforcement
+│   ├── test_temporal_memory.py      # 126 tests: temporal memory and decay
+│   ├── test_output_gate.py          # 120 tests: output gate filtering and formatting
+│   ├── test_contextual_intent.py    # 111 tests: contextual intent classification
 │   ├── test_intent_engine.py        # 79 tests: dialect, S equation, hysteresis, Laws
+│   ├── test_r_equation.py           # 76 tests: R equation response shaping
+│   ├── test_response_shaper.py      # 46 tests: response adaptation layer
+│   ├── test_governor.py             # 42 tests: full Governor pipeline S→P→R→Gate
+│   ├── test_s_equation.py           # 41 tests: S equation properties and invariants
 │   ├── test_time_sense.py           # 40 tests: T scorer — time-of-day, silence gaps, decay
+│   ├── test_domain_theta.py         # 39 tests: domain-specific theta overrides
+│   ├── test_conversation_memory.py  # 34 tests: conversation state tracking
 │   ├── test_emotion_scorer.py       # 32 tests: E scorer load, distress/escalation, bounds
 │   ├── test_intent_scorer.py        # 30 tests: I scorer aggregation math, bounds, OOD guard
+│   ├── test_semantic_scorer.py      # 26 tests: H scorer cosine similarity and anchors
+│   ├── test_hysteresis_deescalation.py # 26 tests: γ+ relaxation and de-escalation
 │   ├── test_dialect_hyperbole.py    # 22 tests: dialect-specific hyperbole detection
 │   ├── test_gated_comparison.py     # 19 tests: gated vs additive equation comparison
+│   ├── test_hysteresis.py           # 17 tests: γ+ tightening and escalation
 │   ├── test_safety_gate.py          # 12 tests: CBRN gate (Arabic + English)
-│   ├── test_pipeline.py             # 3 tests: end-to-end pipeline
+│   ├── test_math.py                 # 12 tests: mathematical utilities
+│   ├── test_unknown_territory.py    # 11 tests: unknown/OOD input handling
+│   ├── test_pipeline.py             # 11 tests: end-to-end pipeline
+│   ├── test_jailbreak_markers.py    # 10 tests: jailbreak detection markers
+│   ├── test_embeddings.py           # 9 tests: embedding backend and fallback
 │   ├── test_held_out_validation.py  # 2 tests: held-out F1 validation (unseen cases)
-│   └── test_adversarial.py          # 15 adversarial cases (standalone runner, 8 Grok + 7 Claude)
+│   └── test_adversarial.py          # adversarial cases (standalone runner)
 │
 ├── eval/
 │   ├── eval_runner.py               # Evaluation harness
@@ -136,7 +154,7 @@ AATIF/
 # Install dependencies
 pip install -r requirements.txt
 
-# Run all tests (239 test functions across 9 files + 15-case adversarial runner + 14 eval scenarios)
+# Run all tests (1,524 test functions across 33 files — 1,257 in tests/ + 267 in engine/)
 python -m pytest tests/ -v
 
 # Run evaluation harness
@@ -299,6 +317,6 @@ AATIF مبني على مفهوم **الفطرة** — أن السلوك الأخ
 
 ---
 
-*78 ملاحظة ميدانية · 239 اختباراً برمجياً · 14 سيناريو تقييم · ورقة بحثية منشورة على Zenodo*
+*78 ملاحظة ميدانية · 1,524 اختباراً برمجياً · 14 سيناريو تقييم · ورقة بحثية منشورة على Zenodo*
 
 *DOI: [10.5281/zenodo.20673292](https://doi.org/10.5281/zenodo.20673292)*

@@ -10,7 +10,7 @@
 
 The current paper (`aatif_paper_arxiv.tex`) tells a story about 73 conjectures derived from observation, a 7-step inductive methodology, an Ethical Question Compiler (EQC), and a Tri-Engine Decision Protocol.
 
-The code (`engine/`, `tests/`, `benchmarks/`) implements something different and more concrete: a mathematical governance equation `S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]` with three independent scorers (H/I/E), hysteresis control, CBRN safety gates, 164 deterministic tests, A/B calibration results, and benchmark evaluations against HarmBench and MultiJail.
+The code (`engine/`, `tests/`, `benchmarks/`) implements something different and more concrete: a mathematical governance equation `S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]` with three independent scorers (H/I/E), hysteresis control, CBRN safety gates, 1,524 deterministic tests, A/B calibration results, and benchmark evaluations against HarmBench and MultiJail.
 
 All four reviewing models (Gemini, Grok, DeepSeek, ChatGPT) independently reached the same conclusion:
 
@@ -39,7 +39,7 @@ Alternative: "AATIF: Continuous Safety Scoring for LLMs via Multiplicative Harm 
   1. **No interpretable equation.** FanarGuard, Llama Guard, Perspective API all use learned classifier weights — none provides an explicit mathematical governance formula with provable properties.
   2. **No non-compensability guarantee.** Additive or mean-based aggregation allows benign intent to mask moderate harm ("toxic positivity" attack).
   3. **Arabic as afterthought.** Arabic dialect support is either absent or "bolted on" to English-first systems. No system handles Arabic figurative hyperbole as a first-class concern.
-- AATIF addresses all three gaps with a single framework: an explicit multiplicative equation, zero-training semantic anchors, and Arabic-first design with dialect hyperbole disambiguation.
+- AATIF addresses all three gaps with a single framework: an explicit multiplicative equation, curated semantic anchors (fixed design, variable fit), and Arabic-first design with dialect hyperbole disambiguation.
 - State the S equation in the introduction. Let the reader see the contribution on page 1.
 
 ### Section 2 — Related Work (1.5 pages)
@@ -142,7 +142,7 @@ Alternative: "AATIF: Continuous Safety Scoring for LLMs via Multiplicative Harm 
 
 **Move current Section 5 benchmark results here. Add the missing data.**
 
-- 5.1 — **Test Suite (164 tests)**
+- 5.1 — **Test Suite (1,524 tests)**
   - Categories: dialect detection (22), S equation math (boundedness, monotonicity), decision logic across 4 profiles, hysteresis stability, Law Ω CBRN gate (12), Law Ξ override lock, intent scorer (30), adversarial cases (15), gated comparison (18), pipeline integration (3)
   - All deterministic — no external model dependency at test time
   - CI/CD via GitHub Actions
@@ -230,7 +230,7 @@ Alternative: "AATIF: Continuous Safety Scoring for LLMs via Multiplicative Harm 
 | A/B calibration results (θ sweep, F1=0.984) | `experiments/temperature_ab_results_bge.md` | §5.4 |
 | Ambiguity pre-check logic | `aatif_s_equation.py` lines 86-173 | §3.6 |
 | Jailbreak bidirectional handler | `aatif_s_equation.py` lines 175-206, 569-591 | §3.6 |
-| Test suite summary (164 tests by category) | `tests/` directory | §5.1 |
+| Test suite summary (1,524 tests by category) | `tests/` directory | §5.1 |
 | Mode profiles with parameter tables | `aatif_s_equation.py` GATED_PROFILES | §3.5 |
 | Meaning density hypothesis (كثافة المعنى) | FN#078 | §4.1 |
 | Maqam-to-safety origin chain | User's specification + FN#065 | §4.3 |
@@ -364,7 +364,7 @@ For a **full conference paper** (8-12 pages): use the full structure above.
 
 ## 9. New Abstract (Draft)
 
-> We present AATIF, a mathematical governance framework for large language model safety that provides an explicit, interpretable safety equation with provable non-compensability. The core governance function S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))] fuses three independent perception channels — semantic harm proximity (H), intent classification (I), and emotional load (E) — through a multiplicative gate structure that prevents benign intent from compensating for detected harm. Unlike trained classifiers, AATIF requires zero training data, operating through 132 curated semantic anchors with cosine similarity scoring via multilingual embeddings (bge-m3). The framework treats Arabic as a first-class semantic input, detecting 11 Arabic dialects with 28 hyperbole-disambiguation anchors to prevent figurative speech from triggering false harm signals. Evaluated against HarmBench (236 behaviors) and MultiJail (75 prompts), AATIF achieves 74.3% safety-category detection with 100% on chemical/biological threats, and Arabic outperforms English on identical harmful prompts (74.7% vs 69.3%), validating the Arabic-first design. The system includes hysteresis control for decision stability, unconditional CBRN safety gates, and four tunable mode profiles calibrated via A/B testing (F1 = 0.984 on 54 validation cases). A test suite of 164 deterministic tests ensures mathematical correctness. AATIF is the first LLM safety system to provide an explicit governance equation with formally verified non-compensability, Arabic dialect awareness, and zero-training extensibility through anchor curation.
+> We present AATIF, a mathematical governance framework for large language model safety that provides an explicit, interpretable safety equation with provable non-compensability. The core governance function S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))] fuses three independent perception channels — semantic harm proximity (H), intent classification (I), and emotional load (E) — through a multiplicative gate structure that prevents benign intent from compensating for detected harm. Unlike trained classifiers, AATIF operates through 169 curated semantic anchors with cosine similarity scoring via multilingual embeddings (bge-m3) — a fixed design where the embedding layer can be tuned per deployment. The framework treats Arabic as a first-class semantic input, detecting 11 Arabic dialects with 35 hyperbole-disambiguation anchors to prevent figurative speech from triggering false harm signals. Evaluated against HarmBench (236 behaviors) and MultiJail (75 prompts), AATIF achieves 74.3% safety-category detection with 100% on chemical/biological threats, and Arabic outperforms English on identical harmful prompts (74.7% vs 69.3%), validating the Arabic-first design. The system includes hysteresis control for decision stability, unconditional CBRN safety gates, and four tunable mode profiles calibrated via A/B testing (F1 = 0.984 on 54 validation cases). A test suite of 1,524 deterministic tests ensures mathematical correctness. AATIF is the first LLM safety system to provide an explicit governance equation with formally verified non-compensability, Arabic dialect awareness, and fixed-design extensibility through anchor curation (variable fit via embedding tuning).
 
 ---
 
@@ -408,7 +408,7 @@ Phase 3 — Polish (Week 4)
   □ Internal review: does every claim match the code?
 
 Phase 4 — Validation (Week 5)
-  □ Run full test suite, verify 164/164 pass
+  □ Run full test suite, verify 1,524/1,524 pass
   □ Re-run benchmarks if any code changed
   □ External read: give to 1-2 people who haven't seen AATIF
   □ Submit to target venue

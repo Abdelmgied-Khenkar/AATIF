@@ -59,7 +59,7 @@ The two abstracts are **completely different documents** — not minor edits of 
 - 169 curated anchors
 - Benchmark results (74.3% HarmBench, 74.7% vs 69.3% MultiJail)
 - F1 scores: in-sample 0.984, held-out 0.9615
-- 166 deterministic tests
+- 1,524 deterministic tests
 - Arabic dialect hyperbole (35 anchors)
 - Hysteresis, CBRN gates, mode profiles
 
@@ -75,7 +75,7 @@ This is where the versions **disagree** and the differences matter:
 |---|---|---|---|
 | **H anchor count** | 132 (footnote says "expanded to 169") | **169** throughout | v2 is current |
 | **Dialect hyperbole anchors** | 28 | **35** | v2 is current |
-| **Test count** | **164** | **166** | v2 is current |
+| **Test count** | **164** | **166** (now 1,524) | Both stale — current is 1,524 |
 | **θ (harm threshold)** | 0.40 | 0.40 | Same |
 | **α (steepness)** | 10 | 10 | Same |
 | **w1, w2** | 2.0, 1.5 | 2.0, 1.5 | Same |
@@ -171,7 +171,7 @@ This is where the versions **disagree** and the differences matter:
 
 ### Issues in arxiv:
 - **Stale anchor count:** Says 132 in main text (footnote mentions 169). The actual system has 169 now.
-- **Stale test count:** Says 164. The actual test suite has 166.
+- **Stale test count:** Says 164. The actual test suite has 1,524 test functions.
 - **Stale dialect anchors:** Says 28. Actual count is 35.
 - **Stale MLCommons anchor counts:** S9=4, S10=38+, S11=4. All lower than current values.
 - **No held-out validation:** Only mentions in-sample calibration. No F1 = 0.9615 result.
@@ -193,7 +193,7 @@ This is where the versions **disagree** and the differences matter:
 
 **v2 is the stronger paper for publication.** Here's why:
 
-1. **Numbers are current** — 169 anchors, 166 tests, 35 dialect anchors, held-out F1 = 0.9615.
+1. **Numbers need updating** — 169 anchors, 1,524 tests (was 166), 35 dialect anchors, held-out F1 = 0.9615.
 2. **It was uploaded to Zenodo** — it's already the public record.
 3. **It's structured as a technical paper** — gap-driven intro, equation, evaluation, comparison. This is what reviewers expect.
 4. **It has the held-out validation** — the arxiv version lacks this, which is a significant weakness.

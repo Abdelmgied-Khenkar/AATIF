@@ -1,5 +1,5 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-06-27 by Cowork session (Dialect Embedding + Tailor Principle)
+Last updated: 2026-06-28 by Cowork session (Judgment Memory + D Parameter)
 
 ## Urgent (هذا الأسبوع)
 - [x] (AATIF) ✅ **تصحيح الأخطاء الحسابية AE1-AE5** — 2026-06-26: 5 أخطاء اتصلحت في الورقة (ARITHMETIC_FIXES_2026-06-26.md)
@@ -10,10 +10,13 @@ Last updated: 2026-06-27 by Cowork session (Dialect Embedding + Tailor Principle
 - [x] (AATIF) ✅ **بحث مراسي اللهجات + اختبار embedding** — 2026-06-27: 70 تعبير عبر 4 مجموعات لهجية (شامي، عراقي، مغاربي، سوداني/يمني) محفوظة في `arabic_dialect_anchors_research.md`. اختبار bge-m3 على نفس المعنى بـ6 لهجات + Arabizi. النتائج في `DIALECT_EMBEDDING_RESULTS.md` و `benchmarks/dialect_embedding_test.json`. **النتيجة الرئيسية:** تشابه bge-m3 بين اللهجات = 0.61-0.77 (متوسط، مش كافي). Arabizi = نقطة عمياء (0.38 مقابل 0.70 للعربي).
 - [x] (AATIF) ✅ **مبدأ الخياط (Tailor Principle)** — 2026-06-27: قرار معماري: "صفر fine-tuning" كان ادعاء زايد. الصحيح: التصميم ثابت، الـ embedding layer يتزبط على البيئة. ثلاث خيارات اتقيّمت: (1) مراسي أكثر = مسكّن، (2) LLM في البايبلاين = الحاكم محتاج محكوم، (3) fine-tuning الـ embedding = الحل الصحيح. موثّق في FN#079.
 - [ ] (AATIF) تحديث Zenodo — رفع النسخة الجديدة بعد تصحيح الورقة
-- [ ] (AATIF) إصلاح وصّال agent SKILL.md — يقول 164 اختبار (المفروض 933) و θ fixed (المفروض θ(d)) — يحتاج تعديل يدوي من Settings → Capabilities
+- [ ] (AATIF) إصلاح وصّال agent SKILL.md — يقول 164 اختبار (المفروض 1,524) و θ fixed (المفروض θ(d)) — يحتاج تعديل يدوي من Settings → Capabilities
 - [ ] (AATIF) **تحديث الورقة: مبدأ الخياط** — إعادة صياغة "zero fine-tuning" → "fixed design, variable fit" في الورقة كاملة
 - [ ] (AATIF) **إصلاح بيانات الاختبار** — "هموت فيك" → "بموت فيك" (المصري الصحيح) في dialect embedding test
-- [ ] (AATIF) **Git commit** — كل شغل جلسة 2026-06-27 (dialect research + embedding results + FN#079)
+- [x] (AATIF) ✅ **Git commit** — كل شغل جلسة 2026-06-27 (dialect research + embedding results + FN#079)
+- [x] (AATIF) ✅ **Judgment Memory layer (ذاكرة الحُكم)** — Phase 1 built + 145 tests
+- [x] (AATIF) ✅ **D parameter (Domain Sensitivity)** — resolved Q1-Q3, integrated
+- [x] (AATIF) ✅ **Git push for 2026-06-28 session** — commit d1e678b pushed to origin/main
 
 ## Next (الأسبوع الجاي)
 - [ ] (AATIF) **Embedding fine-tuning على أزواج اللهجات** — بحث كيفية fine-tune bge-m3 على أزواج لهجية عربية (محتاج dataset أزواج لهجية). الحل المعماري الصحيح لمشكلة التغطية اللهجية (مبدأ الخياط — FN#079).
@@ -49,7 +52,7 @@ Last updated: 2026-06-27 by Cowork session (Dialect Embedding + Tailor Principle
 - [ ] (AATIF) تقديم الورقة لمؤتمر — EACL 2027 ARR deadline August 3 (خطة تنفيذية في EXECUTION_PLAN_2026-06-26.md)
 
 ## Later (مش مستعجل)
-- [ ] (AATIF) D (Directness) parameter — ما اتبنى بعد
+- [x] (AATIF) ✅ D (Domain Sensitivity) parameter — built 2026-06-28, resolves Q1-Q3
 - [ ] (AATIF) Integration testing مع WhatsApp — يحتاج server restart
 - [ ] (AATIF) Priority 2 من ROADMAP: Identity Engine، Meaning Engine، Supervisor، MCE
 - [ ] (AATIF) Priority 3 من ROADMAP: Boot Sequence، System Binding، Kernel، ECI
@@ -74,6 +77,15 @@ Last updated: 2026-06-27 by Cowork session (Dialect Embedding + Tailor Principle
 - "بموت فيك" هي المصرية الصحيحة (مش "هموت فيك")
 
 ## Done (تم)
+
+### 2026-06-28
+- Built Judgment Memory layer (aatif_judgment_memory.py — 1,366 lines, 116 tests)
+- Built Judgment Integration layer (aatif_judgment_integration.py — 443 lines, 29 tests)
+- Created D parameter (Domain Sensitivity) — resolves trust/dialect/storage per domain
+- FN#081: Domain Sensitivity Parameter
+- Updated JUDGMENT_MEMORY_DESIGN.md with D parameter architecture
+- Total: 1,809 new lines of code, 145 new tests, 0 existing tests broken
+
 - [x] 2026-06-27 (Cowork) **بحث مراسي اللهجات + اختبار embedding + مبدأ الخياط** — 70 تعبير عبر 4 مجموعات لهجية. اختبار bge-m3 على 6 لهجات + Arabizi. اكتشاف: تشابه بين اللهجات 0.61-0.77 (متوسط)، Arabizi نقطة عمياء (0.38). قرار معماري: "zero fine-tuning" → "fixed design, variable fit" (مبدأ الخياط FN#079). ثلاث خيارات اتقيّمت ورُفض اثنين. الحل: embedding fine-tuning + Arabizi transliterator.
 - [x] 2026-06-26 (Cowork) **Phase 2 — Fix Safety Edges كامل** — 15 إصلاح (H1-H5، C3-C4، M1-M7) عبر 6 ملفات engine + output gate. اكتشفنا وصلحنا bug خطير: BLOCK/EMERGENCY ما كان ينفّذ لأن check() ما كان يعمل early return بعد _check_protocol_compliance. + bug ثاني: set iteration order عشوائي كان يخلّي EMERGENCY يتنفّذ قبل BLOCK. + bug ثالث: text sync كان يلغي تنظيف الطبقات 1-3 (29 regression) — حللناه بـ snapshot approach. 10 اختبارات C3 جديدة. **النتيجة:** 865 نجحت / 16 فشل (sklearn سابقاً) / 67 تخطّت — صفر تراجع من التغييرات.
 - [x] 2026-06-26 (Cowork) **Phase 1 — Fix the Foundation كامل** — Tasks 1.1-1.4 (AE fixes، C1 wiring verification، C2 Governor integration، benchmark re-run on full pipeline).

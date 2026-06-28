@@ -79,7 +79,7 @@ FanarGuard is the closest related work to AATIF in the Arabic AI safety space. B
 > continuous scores with provable properties (non-compensability via multiplicative
 > gating, sigmoid symmetry). While FanarGuard's data-driven approach excels at
 > categorical safety classification, AATIF's equation-driven approach offers full
-> interpretability, zero-training deployment, and formal governance guarantees.
+> interpretability, fixed-design deployment (variable fit via embedding tuning), and formal governance guarantees.
 > These approaches are complementary rather than competitive — FanarGuard could
 > benefit from AATIF's governance structure, and AATIF could benefit from
 > FanarGuard's cultural alignment axis."

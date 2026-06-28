@@ -218,7 +218,7 @@ These were verified via pytest --collect-only, code inspection, and direct count
 6. **Write the paper that matches the code** — This was the consensus of all 4 model reviews (Gemini, Grok, DeepSeek, ChatGPT).
 7. **No overclaims** — Don't say "first system to..." — say "combines, for the first time in a single deployable system..." Each component exists separately; the combination is the contribution.
 8. **Human-over-the-loop** — AATIF is human-over-the-loop governance (human designs rules, system applies them autonomously), NOT human-in-the-loop (human approves each decision).
-9. **Anchors are not training** — Anchors are a reference list compared via cosine similarity. No optimization, no gradient descent, no weight updates. This is zero-fine-tuning extensibility.
+9. **Anchors are not training** — Anchors are a reference list compared via cosine similarity. No optimization, no gradient descent, no weight updates. The design is fixed; the embedding layer can be tuned per deployment (fixed design, variable fit — the Tailor Principle, FN#079).
 
 ## LaTeX Requirements
 

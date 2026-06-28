@@ -95,24 +95,21 @@ The benchmark results (HarmBench, MultiJail, held-out) are all **perfectly accur
 
 ## ❌ DISCREPANCIES (7 found)
 
-### 1. Test Count: Paper says 164, actual is 166
+### 1. Test Count: Paper says 164, actual is 1,524
 
 **Paper (Abstract, §1, §5.1, §6.1, §7):** "A test suite of 164 deterministic tests"
 
-**Actual (`def test_` count across all test files):**
+**Actual (`def test_` count across all test files, as of 2026-06-28):**
 
-| File | Count |
-|---|---|
-| test_intent_engine.py | 79 |
-| test_intent_scorer.py | 30 |
-| test_dialect_hyperbole.py | 22 |
-| test_gated_comparison.py | 18 |
-| test_safety_gate.py | 12 |
-| test_pipeline.py | 3 |
-| test_held_out_validation.py | 2 |
-| **Total** | **166** |
+| Directory | Files | Test Functions |
+|---|---|---|
+| tests/ | 28 | 1,257 |
+| engine/ | 5 | 267 |
+| **Total** | **33** | **1,524** |
 
-**Verdict:** The paper says 164 but there are 166 test functions. Likely 2 tests were added after the paper text was written (probably the 2 in `test_held_out_validation.py`). **Fix: update to 166 in all 5 locations.**
+With parametrize expansions: 1,612 effective pytest-collected tests. Plus 73 subtests.
+
+**Verdict:** The paper says 164 but there are 1,524 test functions (grew from 166 → 881 → 933 → 1,524 across Phase 1–3 + Judgment Memory). **Fix: update to 1,524 in all 5 locations.**
 
 ---
 
@@ -235,7 +232,7 @@ THRESHOLDS = [
 | 🔴 Critical | Rewrite Table 1 (decision thresholds) to match code: 0.7/0.5/0.3 | §3.1, Table 1 |
 | 🔴 Critical | Rewrite Table 2 (mode profiles) to match GATED_PROFILES | §3.5, Table 2 |
 | 🔴 Critical | Fix FanarGuard arXiv placeholder: `2411.XXXXX` → real ID | Bibliography |
-| 🟡 Important | Update test count: 164 → 166 | Abstract, §1, §5.1, §6.1, §7 |
+| 🟡 Important | Update test count: 164 → 1,524 | Abstract, §1, §5.1, §6.1, §7 |
 | 🟡 Important | Update dialect-hyperbole anchor count: 28 → 35 | Abstract, §3.2, §4.2, §7 |
 | 🟢 Minor | Update MLCommons table approximate counts (38+ → 41, 8+ → 12) | Table 5 |
 | 🟢 Minor | Verify high_sensitivity narrative matches new parameters | §3.5 prose |

@@ -96,6 +96,33 @@ except ImportError:
     except ImportError:
         HAS_CONTEXTUAL_INTENT = False
 
+# ---------------------------------------------------------------------------
+# Judgment memory — optional.  When present the Governor records every S(d)
+# outcome to a forensic ledger, enabling judgment-context-aware θ adjustment
+# in future interactions.  When absent the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_judgment_memory import JudgmentMemory, _hash_message as _jm_hash
+    from aatif_judgment_integration import (
+        JudgmentAwareGovernor,
+        JudgmentAwareResult,
+        create_judgment_governor,
+    )
+    HAS_JUDGMENT = True
+except ImportError:
+    HAS_JUDGMENT = False
+
+# ---------------------------------------------------------------------------
+# Response shaper — optional.  Converts engine decisions into rich
+# meaning_instructions for the LLM (dialect, tone, firmness, forbidden
+# phrases).  When absent the Governor uses its built-in style guidance.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_response_shaper import AATIFResponseShaper, ResponseShape
+    HAS_RESPONSE_SHAPER = True
+except ImportError:
+    HAS_RESPONSE_SHAPER = False
+
 
 # ═══════════════════════════════════════════════════════════
 #  Decision constants
@@ -165,6 +192,34 @@ _STYLE_GUIDANCE = {
 
 
 # ═══════════════════════════════════════════════════════════
+#  _ShaperReading — lightweight adapter for the response shaper
+# ═══════════════════════════════════════════════════════════
+#
+# The response shaper expects an IntentReading-like object, but the Governor
+# works with raw s_result dicts. This adapter bridges the gap by mapping
+# available pipeline data into the attributes the shaper accesses. Fields
+# not available from the S engine (emotional_state, load_bearing, etc.)
+# get sensible defaults.
+
+@dataclass
+class _ShaperReading:
+    """Minimal reading adapter built from Governor pipeline data."""
+    decision: str = "EXECUTE"
+    decision_reason: str = ""
+    mode: str = "NORMAL"
+    emotional_state: str = "clear"
+    emotional_confidence: float = 0.8
+    load_bearing: bool = False
+    dialect_detected: str = "unknown"
+    ambiguity_score: float = 0.0
+    harm_score: float = 0.0
+    softening_factor: float = 0.5
+    skills_to_activate: list = field(default_factory=list)
+    deep_intent: str = ""
+    directness: Optional[float] = None
+
+
+# ═══════════════════════════════════════════════════════════
 #  GovernedResponse — the full audit trail
 # ═══════════════════════════════════════════════════════════
 
@@ -204,6 +259,12 @@ class GovernedResponse:
     # Contains: fingerprint reading, repetition context, suggested approach,
     # temporal context, merged insights.  NEVER influences S(d).
     triad_context: Optional[dict] = None
+
+    # ── Judgment memory (when wired) ──
+    judgment_recorded: bool = False  # True if this decision was recorded to the ledger
+
+    # ── Response shaper (when wired) ──
+    response_shape: Optional[object] = None  # ResponseShape from aatif_response_shaper
 
     # ── Diagnostics ──
     stage_reached: str = ""
@@ -257,6 +318,8 @@ class AATIFGovernor:
         fingerprint: Optional[object] = None,
         temporal_memory: Optional[object] = None,
         contextual_intent: Optional[object] = None,
+        judgment_memory: Optional[object] = None,
+        response_shaper: Optional[object] = None,
         profile: str = "default",
         equation_mode: str = "gated",
         user_timezone: str = "Asia/Riyadh",
@@ -356,6 +419,17 @@ class AATIFGovernor:
         # Wraps the base I scorer with fingerprint + memory context.
         # Wired in here so it's no longer dead code (consensus fix #1).
         self.contextual_intent = contextual_intent  # Optional[ContextualIntentScorer]
+
+        # ── Judgment memory — optional forensic ledger ──
+        # When present, the Governor records every S(d) outcome so the
+        # JudgmentMemory accumulates context for future θ adjustments.
+        # NEVER influences S(d) directly — it only observes and records.
+        self.judgment_memory = judgment_memory  # Optional[JudgmentMemory]
+
+        # ── Response shaper — optional meaning_instruction builder ──
+        # Converts decisions into rich LLM instructions with dialect,
+        # tone, firmness, and forbidden phrases.
+        self.response_shaper = response_shaper  # Optional[AATIFResponseShaper]
 
     # ───────────────────────────────────────────────────
     #  Backend health
@@ -464,6 +538,80 @@ class AATIFGovernor:
             return (True, "")
         except Exception as exc:
             return (False, f"Governance integrity error: {exc}")
+
+    # ───────────────────────────────────────────────────
+    #  Judgment memory — forensic recording
+    # ───────────────────────────────────────────────────
+
+    def _record_judgment(
+        self,
+        message: str,
+        s_result: dict,
+        conversation_id: Optional[str],
+        domain: str,
+    ) -> bool:
+        """Record the S(d) outcome to the judgment memory ledger.
+
+        Returns True if recording succeeded, False otherwise.
+        This is a forensic record — it observes and records but NEVER
+        influences S(d). The judgment memory accumulates data that can
+        inform future θ adjustments via JudgmentAwareGovernor.
+        """
+        if self.judgment_memory is None or not HAS_JUDGMENT:
+            return False
+        try:
+            msg_hash = _jm_hash(message) if message else "empty"
+            scores = {
+                "H": s_result.get("H", 0.0),
+                "I": s_result.get("I", 0.0),
+                "E": s_result.get("E", 0.0),
+                "S": s_result.get("S", 0.0),
+            }
+            self.judgment_memory.record_judgment(
+                session_id=conversation_id or "anonymous",
+                msg_hash=msg_hash,
+                msg_embedding=None,
+                scores=scores,
+                decision=s_result.get("decision", "SAFE_FREEZE"),
+                theta=s_result.get("theta_effective", 0.40),
+            )
+            return True
+        except Exception:
+            return False  # graceful degradation — never break the pipeline
+
+    # ───────────────────────────────────────────────────
+    #  Response shaper — optional meaning_instruction layer
+    # ───────────────────────────────────────────────────
+
+    def _shape_response(
+        self,
+        s_result: dict,
+        memory_context: Optional[dict],
+    ) -> Optional[object]:
+        """Build a ResponseShape from pipeline data if a shaper is configured.
+
+        Returns None if no response shaper is available. Uses _ShaperReading
+        as an adapter to map s_result fields into the attributes the shaper
+        expects.
+        """
+        if self.response_shaper is None or not HAS_RESPONSE_SHAPER:
+            return None
+        try:
+            reading = _ShaperReading(
+                decision=s_result.get("decision", "EXECUTE"),
+                decision_reason=s_result.get("decision_reason", ""),
+                harm_score=s_result.get("H", 0.0),
+                ambiguity_score=(
+                    0.8 if s_result.get("ambiguity_override") else 0.0
+                ),
+                softening_factor=s_result.get("F_prime", 0.5),
+                directness=1.0 - s_result.get("F_prime", 0.5),
+            )
+            return self.response_shaper.shape(
+                reading, memory_context or {},
+            )
+        except Exception:
+            return None  # graceful degradation — never break the pipeline
 
     # ───────────────────────────────────────────────────
     #  Triad context (fingerprint + temporal memory)
@@ -684,6 +832,12 @@ class AATIFGovernor:
         )
         s_decision = s_result["decision"]
 
+        # ── Judgment memory: record every S(d) outcome ──
+        # Forensic only — does NOT influence S(d). Graceful on failure.
+        judgment_recorded = self._record_judgment(
+            message, s_result, conversation_id, domain,
+        )
+
         # ════════════════════════════════════════════════
         #  SOVEREIGNTY — S(d) is the gatekeeper
         # ════════════════════════════════════════════════
@@ -701,6 +855,7 @@ class AATIFGovernor:
                 memory_context=memory_context,
                 stage_reached=STAGE_S,
                 domain=domain,
+                judgment_recorded=judgment_recorded,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             # Dynamic θ: record blocked decision for future θ adjustment
@@ -732,6 +887,7 @@ class AATIFGovernor:
                 memory_context=memory_context,
                 stage_reached=STAGE_P,
                 domain=domain,
+                judgment_recorded=judgment_recorded,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             # Dynamic θ: record blocked decision for future θ adjustment
@@ -761,6 +917,7 @@ class AATIFGovernor:
                 memory_context=memory_context,
                 stage_reached=STAGE_P,
                 domain=domain,
+                judgment_recorded=judgment_recorded,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             resp.processing_time_ms = self._elapsed_ms(start)
@@ -795,8 +952,13 @@ class AATIFGovernor:
         emergency = p_result.highest_action == ACTION_EMERGENCY
 
         # ════════════════════════════════════════════════
+        #  Response shaper (optional — meaning_instruction layer)
+        # ════════════════════════════════════════════════
+        response_shape = self._shape_response(s_result, memory_context)
+
+        # ════════════════════════════════════════════════
         #  Compose the governed prompt (P instructions + R style + memory
-        #  + triad context)
+        #  + triad context + response shape)
         # ════════════════════════════════════════════════
         governed_prompt = self._compose_prompt(
             message=message,
@@ -807,6 +969,7 @@ class AATIFGovernor:
             memory_prompt=memory_prompt,
             emergency=emergency,
             triad_context=triad_context,
+            response_shape=response_shape,
         )
 
         resp = GovernedResponse(
@@ -821,6 +984,8 @@ class AATIFGovernor:
             stage_reached=STAGE_PROMPT,
             domain=domain,
             triad_context=triad_context,
+            judgment_recorded=judgment_recorded,
+            response_shape=response_shape,
         )
 
         # ── No LLM hook: stop at the governed prompt. The output gate only
@@ -907,6 +1072,7 @@ class AATIFGovernor:
         memory_prompt: str,
         emergency: bool,
         triad_context: Optional[dict] = None,
+        response_shape: Optional[object] = None,
     ) -> str:
         """
         Build the governed prompt the LLM would receive.
@@ -1004,6 +1170,19 @@ class AATIFGovernor:
         )
         lines.append(f"R={r_result.r_score} → {r_result.style_recommendation}")
         lines.append(guidance)
+
+        # ── Response shape (meaning_instruction from shaper) ──
+        if response_shape is not None:
+            meaning = getattr(response_shape, "meaning_instruction", "")
+            if meaning:
+                lines.append("")
+                lines.append("## تعليمات المعنى — response shape")
+                lines.append(meaning)
+            forbidden = getattr(response_shape, "forbidden_phrases", None)
+            if forbidden:
+                lines.append(
+                    f"Forbidden phrases: {', '.join(forbidden)}"
+                )
 
         # ── The user message ──
         lines.append("")

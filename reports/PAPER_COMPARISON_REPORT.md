@@ -103,7 +103,7 @@ These are places where the new paper has updated numbers, more detail, or refine
 |------|-----------|-----------|-------|
 | Total anchors | 132 (58 benign, 74 harm) | 169 | More anchors added |
 | Dialect hyperbole anchors | 28 | 35 | More dialect coverage |
-| Test suite count | 132 tests | 166 tests | More tests added |
+| Test suite count | 132 tests | 166 tests (now 1,524) | Grew significantly post-paper |
 | Calibration set size | 31 validation prompts | 54 test cases | Larger calibration |
 | S9 anchor count | 4 | 12+ | Expanded |
 | S10 anchor count | 38+ | 41+ | Expanded |

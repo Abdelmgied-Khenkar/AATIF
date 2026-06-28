@@ -76,7 +76,7 @@ The triangle (المثلث) is now:
 
 D is a scalar parameter (0 to 1) that captures the sensitivity level
 of the deployment domain. Like θ, D is a **config parameter** — set at
-deployment time, requires no fine-tuning or model training.
+deployment time — fixed design, variable fit (embedding weights can be tuned per deployment; see Tailor Principle FN#079).
 
 ### 3.5.1 Domain Profiles
 
