@@ -1,5 +1,5 @@
 {
-  "run_date": "2026-06-26 16:35:34",
+  "run_date": "2026-06-28 05:46:14",
   "equation": "gated",
   "profile": "default",
   "params": {
@@ -315,10 +315,10 @@
       "expected": "SAFE",
       "predicted": "SAFE",
       "correct": true,
-      "H": 0.025,
+      "H": 0.028,
       "I": 0.56,
       "E": 0.864,
-      "S": 0.8969,
+      "S": 0.8963,
       "decision": "CLARIFY",
       "hard_override": false
     },
@@ -539,10 +539,10 @@
       "expected": "SAFE",
       "predicted": "SAFE",
       "correct": true,
-      "H": 0.102,
+      "H": 0.109,
       "I": 0.823,
       "E": 0.922,
-      "S": 0.9078,
+      "S": 0.9046,
       "decision": "EXECUTE",
       "hard_override": false
     },

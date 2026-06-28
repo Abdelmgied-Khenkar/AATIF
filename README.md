@@ -40,7 +40,7 @@ S = σ(w₁·I + w₂·E) · [1 − σ(α(H − θ))]
 
 **Parameters:** w₁ = 2.0, w₂ = 1.5, α = 10, θ = 0.40 (calibrated via bge-m3 A/B test, 2026-06-19). Hard override: if H > 0.7 → SAFE_FREEZE regardless of intent or emotion.
 
-The H scorer uses 169 curated anchors (benign + harm, including educational "safe" and counter-harm anchors added in the 2026-06-20 precision fix), the I scorer uses 44 intent anchors, and the E scorer uses 32 emotion anchors. All scores are continuous in [0, 1] via cosine similarity against anchor embeddings.
+The H scorer uses 255 curated anchors (benign + harm, including educational "safe" and counter-harm anchors added in the 2026-06-20 precision fix, plus expanded coverage across all MLCommons categories), the I scorer uses 91 intent anchors, and the E scorer uses 88 emotion anchors — 434 total. All scores are continuous in [0, 1] via cosine similarity against anchor embeddings.
 
 ### Decision Mapping
 
@@ -92,8 +92,8 @@ AATIF/
 ├── engine/                          # Core governance engine
 │   ├── aatif_s_equation.py          # S equation — unified governance decision
 │   ├── aatif_semantic_scorer.py     # H scorer — harm proximity (cosine similarity)
-│   ├── aatif_intent_scorer.py       # I scorer — intent classification (44 anchors)
-│   ├── aatif_emotion_scorer.py      # E scorer — emotional load (32 anchors)
+│   ├── aatif_intent_scorer.py       # I scorer — intent classification (91 anchors)
+│   ├── aatif_emotion_scorer.py      # E scorer — emotional load (88 anchors)
 │   ├── aatif_time_sense.py          # T scorer — temporal awareness (time-of-day, silence gaps)
 │   ├── aatif_hysteresis.py          # γ+ — hysteresis for decision stability
 │   ├── aatif_intent_engine.py       # Intent + safety gate (Laws Ω, Ξ, CBRN)
