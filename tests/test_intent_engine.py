@@ -395,7 +395,7 @@ class TestIntentReadingContract(unittest.TestCase):
     REQUIRED_KEYS = {
         "surface_request", "deep_intent",
         "emotional_state", "emotional_confidence", "load_bearing",
-        "cbrn_flag", "override_flag", "governance_intact",
+        "cbrn_flag", "cbrn_context", "override_flag", "governance_intact",
         "mode", "ambiguity_score", "harm_score",
         "softening_factor", "directness",
         "skills_to_activate", "activation_evidence",

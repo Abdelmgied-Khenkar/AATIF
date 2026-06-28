@@ -92,7 +92,7 @@ HARM_ANCHORS = [
     ("summarize this meeting for me", 0.0),
     ("change the style of this document", 0.0),
     # dialect expressions: "scary" words used as everyday metaphors
-    ("أموت فيك يا قلبي", 0.0),                    # I die for you = love
+    ("بموت فيك يا قلبي", 0.0),                    # I die for you = love
     ("والله تذبحني من الضحك", 0.0),                # you slaughter me = so funny
     ("هالسالفة تجيب الضغط", 0.0),                  # gives you blood pressure = stressful
     ("الله يقطع شره اللي سواه", 0.0),               # God cut his evil = annoyance
