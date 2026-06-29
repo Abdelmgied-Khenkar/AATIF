@@ -19,6 +19,7 @@ Run:
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,7 +28,9 @@ if ENGINE not in sys.path:
     sys.path.insert(0, ENGINE)
 
 
-from aatif_pipeline_connector import build_intent_result, _get_governor
+from aatif_pipeline_connector import (
+    build_intent_result, _get_governor, HIGH_RISK_DOMAINS,
+)
 
 
 def _governor_available():
@@ -264,6 +267,164 @@ class TestFullPipelineWithGate(unittest.TestCase):
             self.skipTest("Governor unavailable — domain validation needs bge-m3")
         with self.assertRaises(ValueError):
             build_intent_result("مرحبا", domain="not_a_domain")
+
+
+class TestDegradedFallbackSecurity(unittest.TestCase):
+    """Tests for the domain-aware fallback security fix.
+
+    When the Governor is None (Ollama down), the pipeline must:
+      - HIGH-RISK domains → SAFE_STOP, no regex fallback, clear error
+      - General domains   → regex fallback with loud degradation warning
+
+    These tests force _governor = None via mock to reliably test the
+    fallback path regardless of whether Ollama is actually running.
+    """
+
+    def _force_no_governor(self):
+        """Return a patch that makes _get_governor() always return None."""
+        return patch(
+            "aatif_pipeline_connector._get_governor", return_value=None,
+        )
+
+    # ── High-risk domain: SAFE_STOP ──
+
+    def test_healthcare_domain_safe_stops_without_governor(self):
+        """Healthcare domain must SAFE_STOP when Governor is unavailable."""
+        with self._force_no_governor():
+            result = build_intent_result(
+                "ابي استشارة طبية", domain="healthcare",
+            )
+            plan = result.to_plan_dict()
+
+        aatif = plan["aatif"]
+        self.assertEqual(aatif["decision"], "SAFE_STOP")
+        self.assertFalse(aatif.get("governance_intact", True) if "governance_intact" in aatif else
+                         result.aatif_reading.governance_intact)
+        self.assertIn("degradation_warning", plan)
+        self.assertIn("BLOCKED", plan["degradation_warning"])
+
+    def test_all_high_risk_domains_safe_stop(self):
+        """Every domain in HIGH_RISK_DOMAINS must SAFE_STOP without Governor."""
+        for domain in HIGH_RISK_DOMAINS:
+            with self._force_no_governor():
+                result = build_intent_result("test message", domain=domain)
+                plan = result.to_plan_dict()
+
+            aatif = plan["aatif"]
+            self.assertEqual(
+                aatif["decision"], "SAFE_STOP",
+                f"Domain '{domain}' should SAFE_STOP without Governor",
+            )
+            self.assertIn(
+                "degradation_warning", plan,
+                f"Domain '{domain}' should include degradation_warning",
+            )
+
+    def test_high_risk_safe_stop_has_correct_fields(self):
+        """SAFE_STOP reading must have harm=1.0, ambiguity=1.0, mode=STOP."""
+        with self._force_no_governor():
+            result = build_intent_result("check my account", domain="banking")
+
+        reading = result.aatif_reading
+        self.assertEqual(reading.decision, "SAFE_STOP")
+        self.assertEqual(reading.harm_score, 1.0)
+        self.assertEqual(reading.ambiguity_score, 1.0)
+        self.assertEqual(reading.mode, "STOP")
+        self.assertFalse(reading.governance_intact)
+        self.assertIn("banking", reading.decision_reason)
+
+    def test_high_risk_safe_stop_handling_mode(self):
+        """Plan handling_mode must be refuse_safely for SAFE_STOP."""
+        with self._force_no_governor():
+            result = build_intent_result("help my child", domain="children")
+            plan = result.to_plan_dict()
+
+        self.assertEqual(plan["handling_mode"], "refuse_safely")
+
+    # ── General domain: degraded fallback with warning ──
+
+    def test_general_domain_falls_back_with_warning(self):
+        """General domain should use regex fallback but include warning."""
+        with self._force_no_governor():
+            result = build_intent_result("كم السعر عندكم", domain="general")
+            plan = result.to_plan_dict()
+
+        aatif = plan["aatif"]
+        # Should NOT be SAFE_STOP — general domain gets regex fallback
+        self.assertNotEqual(aatif["decision"], "SAFE_STOP")
+        self.assertEqual(aatif["engine"], "intent_engine_fallback")
+
+        # But must have a degradation warning
+        self.assertIn("degradation_warning", plan)
+        self.assertIn("degraded mode", plan["degradation_warning"])
+        self.assertIn("WARNING", plan["degradation_warning"])
+
+    def test_unknown_domain_falls_back_with_warning(self):
+        """A non-high-risk domain like 'tech' should degrade, not SAFE_STOP."""
+        with self._force_no_governor():
+            result = build_intent_result("hello", domain="tech")
+            plan = result.to_plan_dict()
+
+        aatif = plan["aatif"]
+        self.assertNotEqual(aatif["decision"], "SAFE_STOP")
+        self.assertIn("degradation_warning", plan)
+
+    def test_default_domain_falls_back_with_warning(self):
+        """Default (no domain) should use regex fallback with warning."""
+        with self._force_no_governor():
+            result = build_intent_result("مرحبا")
+            plan = result.to_plan_dict()
+
+        self.assertNotEqual(plan["aatif"]["decision"], "SAFE_STOP")
+        self.assertIn("degradation_warning", plan)
+
+    # ── Normal operation: no warning when Governor is available ──
+
+    def test_no_warning_when_governor_available(self):
+        """When the Governor is working, there should be no degradation warning."""
+        if not _governor_available():
+            self.skipTest("Governor unavailable — cannot test normal path")
+
+        result = build_intent_result("كم السعر عندكم", domain="general")
+        plan = result.to_plan_dict()
+
+        self.assertNotIn("degradation_warning", plan)
+        self.assertEqual(plan["aatif"]["engine"], "governor")
+
+    def test_high_risk_domain_works_normally_with_governor(self):
+        """High-risk domain processes normally when Governor IS available."""
+        if not _governor_available():
+            self.skipTest("Governor unavailable — cannot test normal path")
+
+        result = build_intent_result(
+            "كم السعر عندكم", domain="healthcare",
+        )
+        plan = result.to_plan_dict()
+
+        # Governor handles it — no SAFE_STOP, no degradation warning
+        self.assertEqual(plan["aatif"]["engine"], "governor")
+        self.assertNotIn("degradation_warning", plan)
+
+    # ── Plan structure: backward compatibility ──
+
+    def test_safe_stop_result_has_all_required_keys(self):
+        """Even SAFE_STOP results must have all legacy plan_dict keys."""
+        with self._force_no_governor():
+            result = build_intent_result("test", domain="emergency")
+            plan = result.to_plan_dict()
+
+        # Reuse the key check from TestPipelineIntegration
+        required_keys = [
+            "incoming_text", "normalized_text", "state", "name",
+            "business_type", "greeting", "relationship_context",
+            "surface_intent", "hidden_intent", "why_now_signal",
+            "wrong_answer_risk", "user_knowledge_level", "positioning_mode",
+            "value_focus", "outcome_mode", "trust_mode", "intent_confidence",
+            "ambiguity_flag", "handling_mode", "forbidden_moves",
+        ]
+        for key in required_keys:
+            self.assertIn(key, plan, f"SAFE_STOP missing required key: {key}")
+        self.assertIn("aatif", plan)
 
 
 if __name__ == "__main__":

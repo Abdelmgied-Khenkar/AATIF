@@ -32,8 +32,11 @@ Architect: Abdulmjeed Ibrahim Khenkar
 
 import sys
 import os
+import logging
 from dataclasses import dataclass, field
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 # ── Import paths ──
 _AATIF_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +48,23 @@ from aatif_governor import AATIFGovernor, GovernedResponse  # noqa: E402
 
 # ── Old IntentEngine as FALLBACK (when Ollama unavailable) ──
 from aatif_intent_engine import AATIFIntentEngine, IntentReading  # noqa: E402
+
+
+# ═══════════════════════════════════════════════════════════
+#  High-risk domains — SAFE_STOP when Governor is unavailable
+# ═══════════════════════════════════════════════════════════
+# "الدومين يقرر" — the domain decides. These domains carry real-world
+# harm potential that the regex fallback engine cannot safely evaluate.
+# When the Governor is down, these domains get a complete halt (SAFE_STOP)
+# rather than degraded operation.
+
+HIGH_RISK_DOMAINS = frozenset({
+    "health", "healthcare", "medical",
+    "banking", "finance",
+    "children", "minors",
+    "legal",
+    "emergency",
+})
 
 
 # ═══════════════════════════════════════════════════════════
@@ -90,6 +110,9 @@ class IntentResult:
     # ── New AATIF signals (ride along, don't break old code) ──
     aatif_reading: IntentReading = None
 
+    # ── Degradation transparency (set when Governor is unavailable) ──
+    degradation_warning: Optional[str] = None
+
     def to_plan_dict(self) -> dict:
         """Old format that api_server.py / reply_base_mapper.py expect."""
         base = {
@@ -114,6 +137,10 @@ class IntentResult:
             "handling_mode": self.analysis_matrix.handling_mode if self.analysis_matrix else "clarify_then_answer",
             "forbidden_moves": self.analysis_matrix.forbidden_moves if self.analysis_matrix else [],
         }
+
+        # Surface degradation warning at top level so API consumers see it
+        if self.degradation_warning:
+            base["degradation_warning"] = self.degradation_warning
 
         # Attach AATIF governance signals as extra keys
         if self.aatif_reading:
@@ -460,6 +487,7 @@ def build_intent_result(incoming_text, state="", business_type="",
     """
     relationship_context = relationship_context or {}
     governor = _get_governor()
+    degradation_warning = None   # set only on the fallback path
 
     if governor is not None:
         # ── PRIMARY: Governor (semantic S→P→R→Gate pipeline) ──
@@ -473,13 +501,66 @@ def build_intent_result(incoming_text, state="", business_type="",
         )
         reading = _governed_to_reading(incoming_text, gov_result)
     else:
-        # ── FALLBACK: old regex engine (no Ollama) ──
-        # The documented fail-conservative fallback — a complete (if simpler)
-        # safety classifier, NOT a fail-open passthrough. It has no Output Gate,
-        # so llm_fn/domain/conversation_id do not apply on this path.
-        engine = _get_fallback_engine()
-        reading = engine.read(incoming_text, context=relationship_context)
+        # ── FALLBACK: Governor unavailable — "الدومين يقرر" ──
+        # The domain decides the fallback strategy:
+        #   HIGH-RISK → SAFE_STOP (complete halt, no regex fallback)
+        #   OTHER     → regex fallback with LOUD degradation warning
         gov_result = None
+        domain_lower = domain.lower() if domain else "general"
+
+        if domain_lower in HIGH_RISK_DOMAINS:
+            # ── SAFE_STOP: high-risk domain, no Governor = no service ──
+            logger.warning(
+                "SAFE_STOP: Governor unavailable for high-risk domain '%s'. "
+                "Refusing to process — all ethical architecture bypassed. "
+                "Message: %.80s", domain, incoming_text,
+            )
+            reading = IntentReading(
+                surface_request=incoming_text,
+                deep_intent="blocked_no_governor",
+                emotional_state="clear",
+                emotional_confidence=0.0,
+                load_bearing=False,
+                cbrn_flag=False,
+                override_flag=False,
+                governance_intact=False,
+                mode="STOP",
+                ambiguity_score=1.0,
+                harm_score=1.0,
+                softening_factor=0.0,
+                directness=0.0,
+                skills_to_activate=[],
+                activation_evidence="Governor unavailable — SAFE_STOP for high-risk domain",
+                dialect_detected=_detect_dialect_simple(incoming_text),
+                time_context="",
+                decision="SAFE_STOP",
+                decision_reason=(
+                    f"Safety system unavailable for high-risk domain '{domain}'. "
+                    "Cannot process without full ethical architecture (S equation, "
+                    "output_gate, hysteresis, judgment_memory, domain_protocols)."
+                ),
+            )
+            degradation_warning = (
+                f"BLOCKED: Safety system (Governor) is unavailable. "
+                f"Domain '{domain}' requires full ethical architecture. "
+                f"This request was refused — not processed with reduced protection."
+            )
+        else:
+            # ── DEGRADED FALLBACK: regex engine with loud warning ──
+            logger.warning(
+                "DEGRADED: Governor unavailable — falling back to regex engine "
+                "for domain '%s'. Ethical architecture (S equation, output_gate, "
+                "hysteresis, judgment_memory, domain_protocols) is BYPASSED. "
+                "Message: %.80s", domain, incoming_text,
+            )
+            engine = _get_fallback_engine()
+            reading = engine.read(incoming_text, context=relationship_context)
+            degradation_warning = (
+                "WARNING: Operating in degraded mode. The safety Governor is "
+                "unavailable — ethical architecture (S equation, output_gate, "
+                "hysteresis, judgment_memory, domain_protocols) is not active. "
+                "Results have limited safety protection. Human review recommended."
+            )
 
     # Translate to old format
     surface = _detect_surface_intent(incoming_text, reading)
@@ -516,6 +597,7 @@ def build_intent_result(incoming_text, state="", business_type="",
         intent_layers=intent_layers,
         analysis_matrix=analysis_matrix,
         aatif_reading=reading,
+        degradation_warning=degradation_warning,
     )
     # Attach the full Governor result for downstream consumers that want the
     # complete audit trail (R style, P protocols, gate result, governed prompt).
