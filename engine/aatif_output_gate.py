@@ -33,9 +33,20 @@ Co-builder: Claude (Anthropic)
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
+
+# FN#070 PSP feature flags live in aatif_psp_detector (single source). Layer 7
+# imports them as defaults; callers may override via a PSPGateConfig.
+from aatif_psp_detector import (
+    PSP_GATE_CHECK_ENABLED as _PSP_GATE_CHECK_ENABLED_DEFAULT,
+    PSP_GATE_MODE as _PSP_GATE_MODE_DEFAULT,
+)
+
+# Layer 7 logs closure violations in monitoring mode (corrective, not judicial).
+_psp_logger = logging.getLogger("aatif.psp_gate")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -74,6 +85,71 @@ class GateReading:
 
     # What was changed (audit trail — every modification recorded)
     modifications: List[str] = field(default_factory=list)
+
+
+# ═══════════════════════════════════════════════════════════
+#  Layer 7 — FN#070 PSP closure check (stylistic, NOT safety)
+# ═══════════════════════════════════════════════════════════
+#
+#  Layer 7 is CORRECTIVE / REGENERATIVE, not safety-judicial. It never sets
+#  GateReading.blocked, never touches S/H/θ/GovernanceEquation. It runs only
+#  when explicitly enabled, and defaults to monitoring (log, pass through).
+
+@dataclass
+class PSPGateConfig:
+    """
+    Config for the Layer 7 PSP check. Defaults mirror the FN#070 flags in
+    aatif_psp_detector — OFF, monitor-only — so the gate is inert unless a
+    caller opts in.
+    """
+    PSP_GATE_CHECK_ENABLED: bool = _PSP_GATE_CHECK_ENABLED_DEFAULT
+    PSP_GATE_MODE: str = _PSP_GATE_MODE_DEFAULT   # "monitor" or "block"
+
+
+@dataclass
+class PSPGateReading:
+    """
+    Output of check_psp(). ``text`` is what should be sent (unchanged in
+    monitor mode; possibly re-opened in block mode). Carries an audit trail
+    of what Layer 7 observed — it never blocks.
+    """
+    text: str = ""
+    mode: str = "monitor"
+    enabled: bool = False
+    premature_closure: bool = False
+    regenerated: bool = False
+    flags: List[str] = field(default_factory=list)
+    log_messages: List[str] = field(default_factory=list)
+    notes: str = ""
+
+
+def _psp_get(obj: Any, key: str, default: Any = None) -> Any:
+    """Duck-typed accessor for dict / dataclass / object config & readings."""
+    if obj is None:
+        return default
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
+# Single-path recommendation markers — a response collapsing onto ONE path.
+_PSP_SINGLE_RECOMMENDATION = [
+    r"\byou\s+should\b", r"\bi\s+(?:would\s+)?recommend\b",
+    r"\bthe\s+best\s+(?:option|choice)\s+is\b", r"\bgo\s+with\b",
+    r"\byou\s+(?:need|have)\s+to\b", r"\bdefinitely\b",
+    r"أنصحك", r"الأفضل\s+لك", r"عليك\s+(?:أن|انك)", r"لازم\b",
+    r"خذ\b", r"روح\s+على", r"اختر\b",
+]
+
+# Alternative-presenting markers — the space is still open.
+_PSP_ALTERNATIVE_MARKERS = [
+    " or ", "option", "alternativ", "on the other hand", "either",
+    "another path", "vs ", "versus",
+    "خيار", "بدائل", "إما", "من ناحية", " أو ", " او ", "مسار",
+]
+
+_RE_PSP_SINGLE_REC = [re.compile(p, re.IGNORECASE) for p in _PSP_SINGLE_RECOMMENDATION]
+_RE_PSP_LIST_ITEM = re.compile(r"(?m)^\s*(?:\d+[\.\)]|[-*•])\s+")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -855,3 +931,171 @@ class AATIFOutputGate:
         # No leading/trailing whitespace
         text = text.strip()
         return text
+
+    # ───────────────────────────────────────────────────
+    #  Layer 7: FN#070 PSP closure check (corrective, NOT safety)
+    # ───────────────────────────────────────────────────
+
+    def check_psp(
+        self,
+        response_text: str,
+        psp_reading=None,
+        config=None,
+    ) -> PSPGateReading:
+        """
+        Layer 7 — preserve possibility space (FN#070).
+
+        STYLISTIC and CORRECTIVE, never safety-judicial. This method never
+        blocks, never sets GateReading.blocked, and never touches S/H/θ or the
+        GovernanceEquation — Single Mind keeps safety decisions in the
+        equation alone.
+
+        Behaviour by config:
+          - PSP_GATE_CHECK_ENABLED False → pure pass-through (default).
+          - mode "monitor" (default)     → log premature closure, pass through.
+          - mode "block"                 → re-open the space on premature
+                                            closure (regenerate), else pass.
+
+        A "premature closure" is an UNPROMPTED single-path collapse on a
+        decision point. Prompted closure (user_requested_closure) is allowed
+        and is never a violation.
+
+        Args:
+            response_text: the LLM-generated response.
+            psp_reading:   the PSPReading for this turn (or None).
+            config:        a PSPGateConfig / dict / object, or None for defaults.
+
+        Returns:
+            PSPGateReading with the (possibly re-opened) text and audit trail.
+        """
+        cfg = self._resolve_psp_config(config)
+        reading = PSPGateReading(
+            text=response_text or "",
+            mode=cfg.PSP_GATE_MODE,
+            enabled=cfg.PSP_GATE_CHECK_ENABLED,
+        )
+
+        # Disabled → inert pass-through.
+        if not cfg.PSP_GATE_CHECK_ENABLED:
+            reading.notes = "PSP gate check disabled — pass-through"
+            return reading
+
+        # PSP only applies to decision points.
+        if psp_reading is None or not _psp_get(psp_reading, "is_decision_point", False):
+            reading.notes = "no decision point — nothing to check"
+            return reading
+
+        premature = self._detects_premature_closure(reading.text, psp_reading)
+        reading.premature_closure = premature
+
+        # ── Block mode: regenerate on premature closure ──
+        if cfg.PSP_GATE_MODE == "block":
+            if premature:
+                reading.text = self._regenerate_with_alternatives(
+                    response_text, psp_reading, reading)
+                reading.regenerated = True
+                reading.flags.append("PSP_PREMATURE_CLOSURE_REGENERATED")
+                _psp_logger.info(
+                    "PSP Layer 7 (block): re-opened possibility space on "
+                    "premature closure"
+                )
+            else:
+                reading.notes = "no premature closure — pass-through"
+            return reading
+
+        # ── Monitor mode (default): log, never block ──
+        self._log_closure_violations(reading.text, psp_reading, reading, premature)
+        return reading
+
+    @staticmethod
+    def _resolve_psp_config(config) -> PSPGateConfig:
+        """Normalize a config (PSPGateConfig / dict / object / None)."""
+        if isinstance(config, PSPGateConfig):
+            return config
+        if config is None:
+            return PSPGateConfig()
+        mode = _psp_get(config, "PSP_GATE_MODE", _PSP_GATE_MODE_DEFAULT) or "monitor"
+        return PSPGateConfig(
+            PSP_GATE_CHECK_ENABLED=bool(
+                _psp_get(config, "PSP_GATE_CHECK_ENABLED",
+                         _PSP_GATE_CHECK_ENABLED_DEFAULT)
+            ),
+            PSP_GATE_MODE=mode,
+        )
+
+    def _detects_premature_closure(self, text: str, psp_reading) -> bool:
+        """
+        Premature closure = UNPROMPTED single-path recommendation on a decision
+        point with no alternatives presented.
+
+        Prompted closure is sanctioned → never a violation.
+        """
+        if _psp_get(psp_reading, "user_requested_closure", False):
+            return False
+        if not _psp_get(psp_reading, "is_decision_point", False):
+            return False
+        if not text or not text.strip():
+            return False
+
+        recommends_single = any(rx.search(text) for rx in _RE_PSP_SINGLE_REC)
+        if not recommends_single:
+            return False
+        return not self._presents_alternatives(text)
+
+    @staticmethod
+    def _presents_alternatives(text: str) -> bool:
+        """True when the response keeps more than one path visible."""
+        low = text.lower()
+        if any(m in low for m in _PSP_ALTERNATIVE_MARKERS):
+            return True
+        # Two or more bulleted/numbered items also count as a presented set.
+        return len(_RE_PSP_LIST_ITEM.findall(text)) >= 2
+
+    def _log_closure_violations(
+        self, text: str, psp_reading, reading: PSPGateReading, premature: bool
+    ) -> None:
+        """Monitor mode — record (and log) a premature-closure violation."""
+        if premature:
+            closure_risk = _psp_get(psp_reading, "closure_risk", 0.0)
+            msg = (
+                f"PSP closure violation (monitor): decision point, "
+                f"closure_risk={closure_risk}, single-path recommendation "
+                f"without alternatives"
+            )
+            reading.log_messages.append(msg)
+            reading.flags.append("PSP_CLOSURE_VIOLATION_LOGGED")
+            _psp_logger.info(msg)
+        else:
+            reading.notes = "monitored — no premature closure"
+
+    @staticmethod
+    def _regenerate_with_alternatives(
+        text: str, psp_reading, reading: PSPGateReading
+    ) -> str:
+        """
+        Block mode — re-open the possibility space (corrective, not a block).
+
+        The gate has no LLM, so it appends a re-opening that names the bounded
+        set and hands the final choice back to the human. This converts a
+        collapsed response into one that visibly preserves alternatives.
+        """
+        bounded = _psp_get(psp_reading, "bounded_count", 0) or 3
+        live = _psp_get(psp_reading, "live_paths", []) or []
+        labels = [_psp_get(p, "label", "") for p in live]
+        labels = [lab for lab in labels if lab]
+
+        if labels:
+            opts = "، ".join(labels[:bounded])
+            note = (
+                f"بس خلّينا نحصر الخيارات الواقعية ({opts}) ونوضّح مزايا وعيوب "
+                "كل واحد، والقرار النهائي لك."
+            )
+        else:
+            note = (
+                f"بس في أكثر من مسار ممكن هنا — خلّينا نعرض {bounded} خيارات "
+                "واقعية بمزاياها وعيوبها، والقرار النهائي لك."
+            )
+
+        reading.log_messages.append("regenerated: re-opened possibility space")
+        body = (text or "").rstrip()
+        return (body + "\n\n" + note) if body else note
