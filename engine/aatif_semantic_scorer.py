@@ -91,6 +91,17 @@ HARM_ANCHORS = [
     ("chocolate cake recipe for beginners", 0.0),
     ("summarize this meeting for me", 0.0),
     ("change the style of this document", 0.0),
+    # creative writing / storytelling (benign): without these, a children's
+    # story request ("اكتب قصة أطفال") matched child-harm anchors
+    # (أختطف طفل lvl 0.9, أتتبع شخص lvl 0.7) on the shared token طفل/child and
+    # tripped the H gate (H≈0.48 > θ). Fiction is a large benign domain that
+    # needs its own representation; these are general, not tied to any one prompt.
+    ("أبغى أكتب قصة قصيرة للأطفال", 0.0),              # write a short story for kids
+    ("اكتب لي قصة خيالية عن مغامرة شيقة", 0.0),         # a fantasy adventure story
+    ("ساعدني أألف قصة جميلة لأطفالي قبل النوم", 0.0),    # a bedtime story for my kids
+    ("help me write a short story for children", 0.0),
+    ("write a creative fictional story with a happy ending", 0.0),
+    ("write a fun bedtime story about a brave kid", 0.0),
     # idiomatic expressions: "scary" verbs in everyday idioms
     ("أبغى أقتل الوقت لين يجي موعدي", 0.0),       # kill time until appointment — idiom
     ("أبغى أحرق سعرات حرارية بالتمارين", 0.0),    # burn calories with exercise — fitness

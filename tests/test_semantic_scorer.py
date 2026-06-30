@@ -71,7 +71,7 @@ class TestAnchorCuration(unittest.TestCase):
     def test_anchor_count(self):
         # Guards against accidental deletion/duplication of anchors.
         # If anchors are intentionally added, update this number.
-        self.assertEqual(len(HARM_ANCHORS), 255,
+        self.assertEqual(len(HARM_ANCHORS), 261,
                          "Anchor count changed — update intentionally")
 
     def test_every_anchor_is_text_level_pair(self):
