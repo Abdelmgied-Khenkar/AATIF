@@ -1,5 +1,5 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-06-29 03:30 AM by Cowork session (Stabilization COMPLETE: fallback fix + ethical constants + module map)
+Last updated: 2026-06-29 by Cowork session (✅ المراحل الثلاث كاملة! أ+ب+ج — 10 موديولات، 212+ اختبار جديد في المرحلة ج وحدها، 2058 إجمالي، صفر تراجع)
 
 ## Urgent (هذا الأسبوع)
 - [x] (AATIF) ✅ **تصحيح الأخطاء الحسابية AE1-AE5** — 2026-06-26: 5 أخطاء اتصلحت في الورقة (ARITHMETIC_FIXES_2026-06-26.md)
@@ -20,10 +20,29 @@ Last updated: 2026-06-29 03:30 AM by Cowork session (Stabilization COMPLETE: fal
 - [x] (AATIF) ✅ **تغطية تصميمية للأربع موديولات العضوية** — 2026-06-29: `design/MODULE_FIELD_NOTE_MAP.md`. خريطة ربط: Governor←5FN, Output Gate←5FN, Judgment Memory←4FN, Time Sense←3FN. الفيلد نوتس هي الأصل، مش تصميم جديد.
 - [ ] (AATIF) تحديث Zenodo — رفع النسخة الجديدة بعد تصحيح الورقة
 - [ ] (AATIF) إصلاح وصّال agent SKILL.md — يقول 164 اختبار (المفروض 1,524) و θ fixed (المفروض θ(d)) — يحتاج تعديل يدوي من Settings → Capabilities
-- [ ] (AATIF) **تحديث الورقة: مبدأ الخياط** — إعادة صياغة "zero fine-tuning" → "fixed design, variable fit" في الورقة كاملة
+- [x] (AATIF) ✅ **تحديث الورقة: مبدأ الخياط** — 2026-06-29 audit: v2 paper already has §6.1 "The Tailor Principle: Fixed Design, Variable Fit" + abstract reframed ("without model retraining" + "fixed-architecture extensibility"). No "zero fine-tuning" self-claim in v2. (Note: aatif_paper_acl.tex still has old language — minor, v2 is official)
 - [ ] (AATIF) **تشغيل سكربت Llama Guard** — السكربت موجود (`benchmarks/llamaguard_comparison.py`) لكن محتاج Together AI API key عشان يشتغل — ما في results JSON بعد
-- [ ] (AATIF) **Inter-annotator agreement** — للورقة (ما في أي ملف بعد)
+- [x] (AATIF) ✅ **Inter-annotator agreement** — 2026-06-29: `benchmarks/iaa_dataset.json` (150 حالة: 80 ALLOW/19 CLARIFY/51 BLOCK) + `benchmarks/run_iaa.py` (سكربت كامل: Cohen's κ × 3 أزواج، Fleiss' κ، per-class P/R/F1). محتاج Ollama+bge-m3 للتشغيل.
+- [x] (AATIF) ✅ **تحديث عدد الاختبارات في الورقة** — 2026-06-29: 932→1,929 في 6 مواقع (abstract، intro، §5.1، results table، conclusion×2). + 12 test module جديد في §5.1.
+- [x] (AATIF) ✅ **خريطة الفيلد نوتس ↔ الكود** — 2026-06-29: `design/FIELD_NOTE_CODE_MAP_FULL.md` (740 سطر). 82 فيلد نوت اتراجعت: 19 مكتمل، 33 جزئي، 20 مش موجود، 10 فلسفي. 4 فجوات حرجة: المُحاجج، المُراجع، طبقة "لكن"، التعليل الذاتي.
 - [ ] (AATIF) **تحضير تقديم ARR** — EACL 2027 deadline August 3
+
+## خطة تنفيذ الفجوات (من تدقيق الفيلد نوتس 2026-06-29)
+
+### المرحلة أ — فجوات أمان حرجة (Priority 1)
+- [x] (AATIF) ✅ **FN#049 — كاشف الخير الزائف (False Goodness Detector)** — 2026-06-29: `engine/aatif_false_goodness_detector.py` + `tests/test_false_goodness_detector.py` (46 اختبار). 45 anchor (EN+AR)، 3 إشارات: virtue-language anomaly، intent-motive contrast، moral inversion. مربوط في Governor + AATIFEngine.compute(). النتيجة: "ساعد صديقي... تتبع موقعه" تحوّل من EXECUTE→SAFE_STOP ✓. أسئلة حقيقية ما تتأثر. 1569 نجح / 2 فشل سابق / 0 تراجع.
+- [x] (AATIF) ✅ **FN#031 — المُراجع (Meta-Oversight Engine)** — 2026-06-29: `engine/aatif_meta_oversight.py` + `tests/test_meta_oversight.py` (27 اختبار). pure-logic cross-engine coherence checker: 5 contradiction rules (DECISION_VS_BLOCK، DECISION_VS_EMERGENCY، STYLE_VS_HARM، STYLE_VS_EMERGENCY، STYLE_VS_CARE + WASTED_STYLE). CRITICAL/WARNING/INFO severity. مربوط في Governor (بعد S/P/R وقبل الرد). safety always wins. EXECUTE+EMERGENCY → CLARIFY (mercy principle). 298 اختبار نجح / 0 تراجع.
+- [x] (AATIF) ✅ **FN#045 — تسلسل الإقلاع الآمن (Boot Sequence)** — 2026-06-29: `engine/aatif_boot_sequence.py` + `tests/test_boot_sequence.py` (44 اختبار). 8 مراحل مرتبة: CORE_ENGINE → DOMAIN_PROTOCOLS → RESPONSE_SHAPER → CONVERSATION_MEMORY → TIME_SENSE → OUTPUT_GATE → OPTIONAL_MODULES → SYSTEM_READY. fail-fast للمراحل المطلوبة، graceful degradation للاختيارية. Governor.boot() classmethod مضاف. Saltzer & Schroeder fail-safe default. صفر تراجع.
+
+### المرحلة ب — اكتمال الحوكمة (Priority 2)
+- [x] (AATIF) ✅ **FN#082 — طبقة التعليل الذاتي (Reasoning Trace)** — 2026-06-29: `engine/aatif_reasoning_trace.py` + `tests/test_reasoning_trace.py` (56 اختبار). 21 مادة دستورية مشفّرة من الفيلد نوتس. 4 مجموعات قواعد (decision type, score threshold, domain, protocol/oversight). كل قرار يتتبع للمواد الدستورية اللي تبرره + شرح بلغة واضحة. Bounded Claim Law: max 5 مواد. مربوط في Governor (6 نقاط رجوع). صفر تراجع.
+- [x] (AATIF) ✅ **FN#026+FN#060 — المُحاجج (Anticipatory Logic)** — 2026-06-29: `engine/aatif_muhajij.py` + `tests/test_muhajij.py` (80 اختبار). 5 قنوات جمهور (SCIENTIFIC/HUMANITARIAN/ARCHITECTURAL/PRACTICAL/CULTURAL) × 5 قرارات = 25 template. تثبيت المحتوى: نفس H/θ في كل القنوات، بس الشكل يتغيّر. رفع الإطار: لما المستخدم يجادل → مبدأ بدل قاعدة (25+ إشارة جدل عربي+إنجليزي). 3 مسارات بديلة لكل رفض (كلها آمنة — safety invariant). مربوط في Governor: 4 نقاط رفض + CLARIFY/EXECUTE في _compose_prompt. صفر تراجع (1776 نجح / 2 فشل سابق).
+- [x] (AATIF) ✅ **FN#014 — عقيدة السلطة (Authority Doctrine)** — 2026-06-29: `engine/aatif_authority_doctrine.py` + `tests/test_authority_doctrine.py` (70 اختبار). 4 أدوار: OWNER>TRAINER>USER>GUEST. 8 صلاحيات منفصلة (MODIFY_THETA, MODIFY_DOMAIN, ADD_ANCHORS, MODIFY_STYLE, PERSISTENT_MEMORY, INTERACT, VIEW_TRACE, OVERRIDE_RESPONSE). تفويض تنازلي فقط (TRAINER ما يقدر يصنع OWNER). حماية دستورية: حتى OWNER ما يقدر يعطّل S equation أو يشيل CBRN أو ينزل θ تحت 0.10. كشف انجراف الاستقلالية (25+ إشارة عربي+إنجليزي). الضيف بدون ذاكرة دائمة. مربوط في Governor (6 نقاط رجوع + process(authority_id=...)). صفر تراجع (1846 نجح).
+
+### المرحلة ج — عمق وتطوير (Priority 3)
+- [x] (AATIF) ✅ **FN#024 — نية بخمس طبقات (Five-Layer Intent)** — 2026-06-29: `engine/aatif_five_layer_intent.py` + `tests/test_five_layer_intent.py` (63 اختبار). 5 طبقات: PRIMARY/SECONDARY/HIDDEN/PROTECTIVE/EMOTIONAL. Hidden=خوف داخلي، Protective=تجنب خارجي — تمييز جوهري. كشف إشارات عربي+إنجليزي لكل طبقة. dominant_layer + ambiguity_score + recommend_approach(). مربوط في Governor (6 نقاط رجوع + إثراء CLARIFY لما HIDDEN/PROTECTIVE dominates). صفر تراجع (1909 نجح).
+- [x] (AATIF) ✅ **FN#048 — ماسح المنطق (Logic Profile Scanner)** — 2026-06-29: `engine/aatif_logic_profile_scanner.py` + `tests/test_logic_profile_scanner.py` (60 اختبار). 5 أنماط: REDUCTIONIST/CHALLENGER/TESTER/SINCERE_LEARNER/EGO_DRIVEN. كشف إشارات عربي+إنجليزي لكل نمط. primary_profile + secondary_profile + profile_mix + recommend_tone(). قاعدة صارمة: أنماط لغوية مرصودة فقط — بدون ادعاءات نفسية. مربوط في Governor (HAS_LOGIC_PROFILE + _scan_logic_profile() + tone guidance في _compose_prompt). صفر تراجع (1969 نجح).
+- [x] (AATIF) ✅ **FN#036 — تصادم النوايا المتعددة (Multi-Intent Collision)** — 2026-06-29: `engine/aatif_multi_intent_collision.py` (~590 سطر) + `tests/test_multi_intent_collision.py` (89 اختبار). 5 أنواع تصادم: PARALLEL/HIERARCHICAL/CROSS_LAYER/STRUCTURAL_SEMANTIC/HIGH_RISK. 3 مسارات حل: SAFE_SPLIT/SAFE_MERGE/ESCALATE. دمج فقط لو التوافق ≥ 0.85. HIGH_RISK دائماً ESCALATE. تعارض OWNER يُعامل كمقصود (FN#014). كشف إشارات عربي+إنجليزي (تناقض صفات، طلب+منع، تناقض عاطفي، شكل↔معنى). word-boundary matching يمنع false positives. مربوط في Governor (HAS_MULTI_INTENT + _analyze_intent_collisions() + ESCALATE/SPLIT guidance في _compose_prompt). صفر تراجع (2058 نجح).
 
 ## Next (الأسبوع الجاي)
 - [ ] (AATIF) **Embedding fine-tuning على أزواج اللهجات** — بحث كيفية fine-tune bge-m3 على أزواج لهجية عربية (محتاج dataset أزواج لهجية). الحل المعماري الصحيح لمشكلة التغطية اللهجية (مبدأ الخياط — FN#079).
@@ -55,15 +74,15 @@ Last updated: 2026-06-29 03:30 AM by Cowork session (Stabilization COMPLETE: fal
 - [ ] (AATIF) تقديم الورقة لمؤتمر — EACL 2027 ARR deadline August 3 (خطة تنفيذية في EXECUTION_PLAN_2026-06-26.md)
 
 ## Later (مش مستعجل)
-- [ ] (AATIF) **المُحاجج (Arguer)** — يحاور ويعيد الصياغة بدل الرفض المباشر. يُبنى بعد تأكيد التثبيت.
-- [ ] (AATIF) **المُراجع (Self-Reviewer)** — يكتشف تناقض النظام قبل ما يطلع الرد. يُبنى بعد تأكيد التثبيت.
+- [x] (AATIF) ✅ **المُحاجج (Arguer)** — اكتمل 2026-06-29 (شوف المرحلة ب فوق — FN#026+FN#060)
+- [x] (AATIF) ✅ **المُراجع (Meta-Oversight)** — اكتمل 2026-06-29 (شوف المرحلة أ فوق)
 - [ ] (AATIF) Integration testing مع WhatsApp — يحتاج server restart
 - [ ] (AATIF) Priority 2 من ROADMAP: Identity Engine، Meaning Engine، Supervisor، MCE
-- [ ] (AATIF) Priority 3 من ROADMAP: Boot Sequence، System Binding، Kernel، ECI
+- [ ] (AATIF) Priority 3 من ROADMAP: ~~Boot Sequence~~ ✅، System Binding، Kernel، ECI
 - [ ] (شخصي) تقديم الماستر + البعثة السعودية
 
 ## Blocked (محتاج شي قبل)
-- [ ] (AATIF) رفع على arXiv — محتاج تحديث الورقة أول (مبدأ الخياط + أرقام جديدة)
+- [ ] (AATIF) رفع على arXiv — مبدأ الخياط تم ✅. باقي: تحديث عدد الاختبارات (932→1344+) + أرقام جديدة
 - [ ] (AATIF) تشغيل سكربت Llama Guard — محتاج Together AI API key
 
 ## Decisions Made (قرارات مُتخذة — تراكمية)
@@ -86,6 +105,22 @@ Last updated: 2026-06-29 03:30 AM by Cowork session (Stabilization COMPLETE: fal
 - "بموت فيك" fix — commit 6aff76f
 
 ## Done (تم)
+
+### 2026-06-29 (continued)
+- ✅ **Inter-annotator agreement** — `benchmarks/iaa_dataset.json` (150 حالة) + `benchmarks/run_iaa.py` (Cohen's κ × 3، Fleiss' κ)
+- ✅ **تحديث عدد الاختبارات** — 932→1,929 في 6 مواقع بالورقة
+- ✅ **خريطة الفيلد نوتس ↔ الكود** — 740 سطر audit، 82 FN mapped
+- ✅ **FN#049 كاشف الخير الزائف** — `engine/aatif_false_goodness_detector.py` (45 anchor، 3 إشارات) + 46 اختبار. مربوط في Governor. "أذى متنكر بالرعاية" → SAFE_STOP. صفر تراجع.
+- ✅ **FN#031 المُراجع (Meta-Oversight Engine)** — `engine/aatif_meta_oversight.py` (pure-logic، 5 contradiction rules، CRITICAL/WARNING/INFO) + 27 اختبار. مربوط في Governor بعد S/P/R. safety always wins. EXECUTE+EMERGENCY → CLARIFY. 298 نجح / 0 تراجع.
+- ✅ **FN#045 تسلسل الإقلاع الآمن (Boot Sequence)** — `engine/aatif_boot_sequence.py` (8 مراحل مرتبة) + 44 اختبار. fail-fast + Governor.boot() classmethod. صفر تراجع. **المرحلة أ كاملة ✅**
+
+### 2026-06-29
+- ✅ **إصلاح ثغرة fallback في pipeline_connector.py** — الدومين يقرر: HIGH_RISK_DOMAINS → SAFE_STOP، عام → regex+degradation_warning. ١١ اختبار جديد + 1333 سابق = صفر تراجع
+- ✅ **كتابة "الثوابت الأخلاقية"** — `design/ETHICAL_CONSTANTS.md`. ١٠ ثوابت + ٥ اكتشافات من الفيلد نوتس
+- ✅ **تغطية تصميمية للأربع موديولات العضوية** — `design/MODULE_FIELD_NOTE_MAP.md`. Governor←5FN, Output Gate←5FN, Judgment Memory←4FN, Time Sense←3FN
+- ✅ **FN#082 (field notes as living constitution)** — `field-notes/FN082_field_notes_as_living_constitution.md`
+- ✅ **Git commit 92df4e4** — stabilization fixes + new tests + FN#082 + wassal snapshot
+- ✅ **تدقيق مبدأ الخياط في الورقة** — confirmed v2 paper has §6.1 "The Tailor Principle: Fixed Design, Variable Fit" + no "zero fine-tuning" self-claim. Item marked done.
 
 ### 2026-06-28
 - ✅ **إصلاح "بموت فيك"** — commit 6aff76f: "هموت فيك" → "بموت فيك" (المصرية الصحيحة) في dialect embedding test

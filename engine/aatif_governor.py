@@ -123,6 +123,210 @@ try:
 except ImportError:
     HAS_RESPONSE_SHAPER = False
 
+# ---------------------------------------------------------------------------
+# False Goodness Detector (FN#049) — optional pre-check that catches harm
+# disguised as care / education / protection / authority. When present, the
+# Governor wires it into the S engine so it runs AFTER H/I/E scoring and
+# BEFORE the S decision, boosting H when a virtuous surface hides a harmful
+# payload. When absent, the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_false_goodness_detector import (
+        FalseGoodnessDetector, FalseGoodnessResult,
+    )
+    HAS_FALSE_GOODNESS = True
+except ImportError:
+    try:
+        from engine.aatif_false_goodness_detector import (
+            FalseGoodnessDetector, FalseGoodnessResult,
+        )
+        HAS_FALSE_GOODNESS = True
+    except ImportError:
+        HAS_FALSE_GOODNESS = False
+
+# ---------------------------------------------------------------------------
+# Meta-Oversight Engine (FN#031) — المُراجع, the self-reviewer. Pure logic
+# (no Ollama), so it is always safe to construct. After S, P, and R are all
+# computed it cross-checks them for contradictions (e.g. R "casual" while P
+# flagged "EMERGENCY") and resolves toward the stricter / more coherent
+# reading BEFORE the governed prompt is composed. When absent (ImportError),
+# the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_meta_oversight import (
+        MetaOversightEngine, MetaOversightResult, SEVERITY_CRITICAL,
+    )
+    HAS_META_OVERSIGHT = True
+except ImportError:
+    try:
+        from engine.aatif_meta_oversight import (
+            MetaOversightEngine, MetaOversightResult, SEVERITY_CRITICAL,
+        )
+        HAS_META_OVERSIGHT = True
+    except ImportError:
+        HAS_META_OVERSIGHT = False
+
+# ---------------------------------------------------------------------------
+# Reasoning Trace Engine (FN#082) — المحاجج, the Arguer.  Pure logic — no
+# backend dependency — so it is always safe to construct. After the final
+# decision is reached (post meta-oversight), it builds a constitutional trace
+# that links the decision to the field notes that justify it. When absent
+# (ImportError), the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_reasoning_trace import (
+        ReasoningTraceEngine, ReasoningTrace,
+    )
+    HAS_REASONING_TRACE = True
+except ImportError:
+    try:
+        from engine.aatif_reasoning_trace import (
+            ReasoningTraceEngine, ReasoningTrace,
+        )
+        HAS_REASONING_TRACE = True
+    except ImportError:
+        HAS_REASONING_TRACE = False
+
+# ---------------------------------------------------------------------------
+# المُحاجج (FN#026 + FN#060) — Anticipatory Logic + Audience-Adapted
+# Justification. Pure logic — no backend dependency — so it is always safe to
+# construct. After the final decision is reached, it generates audience-adapted
+# justification text and alternative response paths. For CLARIFY decisions the
+# justification is injected into the governed prompt so the LLM knows HOW to
+# explain the stop/clarify to the user. When absent (ImportError), the Governor
+# works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_muhajij import AlMuhajij, JustificationResult, AudienceChannel
+    HAS_MUHAJIJ = True
+except ImportError:
+    try:
+        from engine.aatif_muhajij import AlMuhajij, JustificationResult, AudienceChannel
+        HAS_MUHAJIJ = True
+    except ImportError:
+        HAS_MUHAJIJ = False
+
+# ---------------------------------------------------------------------------
+# Responsible Authority Doctrine (FN#014) — عقيدة السلطة, the runtime
+# authorization layer. Pure logic — no backend dependency — so it is always
+# safe to construct. It answers "WHO is asking, and are they ALLOWED?" before
+# any privileged parameter modification. When wired and a caller supplies an
+# authority_id, the Governor resolves the authority's context, refuses to
+# persist state for roles without PERSISTENT_MEMORY (guests are stateless),
+# and records the context on the audit trail. The constitutional ceiling sits
+# above every role — even the OWNER cannot disable safety. When absent
+# (ImportError) the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_authority_doctrine import (
+        AuthorityDoctrine, AuthorityRole, AuthorityPermission, AuthorityContext,
+        DEFAULT_OWNER_ID,
+    )
+    HAS_AUTHORITY = True
+except ImportError:
+    try:
+        from engine.aatif_authority_doctrine import (
+            AuthorityDoctrine, AuthorityRole, AuthorityPermission, AuthorityContext,
+            DEFAULT_OWNER_ID,
+        )
+        HAS_AUTHORITY = True
+    except ImportError:
+        HAS_AUTHORITY = False
+
+# ---------------------------------------------------------------------------
+# Five-Layer Intent Model (FN#024) — نية بخمس طبقات. Pure logic — no backend
+# dependency — so it is always safe to construct. After S(d) is computed it
+# reads the five simultaneous intent layers (Primary, Secondary, Hidden,
+# Protective, Emotional) and attaches the reading to the response. For CLARIFY
+# decisions whose dominant layer is HIDDEN or PROTECTIVE, its approach guidance
+# is injected into the governed prompt so the LLM knows whether to gently
+# clarify (internal fear) or respect the protective frame (external avoidance).
+# It NEVER influences S(d) scoring — pure annotation and prompt enrichment.
+# When absent (ImportError) the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_five_layer_intent import (
+        FiveLayerIntentAnalyzer, FiveLayerResult, IntentLayer,
+        recommend_approach as five_layer_recommend_approach,
+    )
+    HAS_FIVE_LAYER_INTENT = True
+except ImportError:
+    try:
+        from engine.aatif_five_layer_intent import (
+            FiveLayerIntentAnalyzer, FiveLayerResult, IntentLayer,
+            recommend_approach as five_layer_recommend_approach,
+        )
+        HAS_FIVE_LAYER_INTENT = True
+    except ImportError:
+        HAS_FIVE_LAYER_INTENT = False
+
+# ---------------------------------------------------------------------------
+# Logic Profile Scanner (FN#048) — ماسح المنطق. Pure logic — no backend
+# dependency — so it is always safe to construct. After S(d) is computed it
+# reads the user's reasoning STYLE (Reductionist, Challenger, Tester, Sincere
+# Learner, Ego-Driven) from observable language patterns only, attaching the
+# reading to the response. On proceed decisions its recommended tone is injected
+# into the governed prompt so the LLM adapts HOW it responds to HOW the user
+# thinks. It NEVER influences S(d) scoring — pure annotation and prompt
+# enrichment. When absent (ImportError) the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_logic_profile_scanner import (
+        LogicProfileScanner, LogicProfileResult, LogicProfile,
+        recommend_tone as logic_profile_recommend_tone,
+    )
+    HAS_LOGIC_PROFILE = True
+except ImportError:
+    try:
+        from engine.aatif_logic_profile_scanner import (
+            LogicProfileScanner, LogicProfileResult, LogicProfile,
+            recommend_tone as logic_profile_recommend_tone,
+        )
+        HAS_LOGIC_PROFILE = True
+    except ImportError:
+        HAS_LOGIC_PROFILE = False
+
+# ---------------------------------------------------------------------------
+# Multi-Intent Collision Handler (FN#036) — تصادم النوايا المتعددة. Pure logic —
+# no backend dependency — so it is always safe to construct. After S(d) is
+# computed it reads whether one message carries TWO conflicting intents,
+# classifies the collision (Parallel, Hierarchical, Cross-Layer,
+# Structural-Semantic, High-Risk) and recommends a resolution (Safe-Split,
+# Safe-Merge, or Escalate). The reading is attached to every response. When the
+# resolution is ESCALATE (high-risk) or SAFE_SPLIT, its guidance is injected into
+# the governed prompt so the LLM does not blindly blend the two intents. It NEVER
+# influences S(d) scoring — pure annotation and prompt enrichment. When absent
+# (ImportError) the Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_multi_intent_collision import (
+        MultiIntentCollisionHandler, CollisionResult, CollisionType,
+        ResolutionStrategy, recommend_action as collision_recommend_action,
+    )
+    HAS_MULTI_INTENT = True
+except ImportError:
+    try:
+        from engine.aatif_multi_intent_collision import (
+            MultiIntentCollisionHandler, CollisionResult, CollisionType,
+            ResolutionStrategy, recommend_action as collision_recommend_action,
+        )
+        HAS_MULTI_INTENT = True
+    except ImportError:
+        HAS_MULTI_INTENT = False
+
+# Severity ranking used to pick the highest-risk collision when composing the
+# prompt. Defined only when the module is available (otherwise unused).
+if HAS_MULTI_INTENT:
+    _COLLISION_SEVERITY = {
+        CollisionType.PARALLEL: 1,
+        CollisionType.STRUCTURAL_SEMANTIC: 2,
+        CollisionType.HIERARCHICAL: 3,
+        CollisionType.CROSS_LAYER: 4,
+        CollisionType.HIGH_RISK: 5,
+    }
+else:
+    _COLLISION_SEVERITY = {}
+
 
 # ═══════════════════════════════════════════════════════════
 #  Decision constants
@@ -266,6 +470,59 @@ class GovernedResponse:
     # ── Response shaper (when wired) ──
     response_shape: Optional[object] = None  # ResponseShape from aatif_response_shaper
 
+    # ── Meta-Oversight (FN#031, when wired) ──
+    # المُراجع's coherence verdict — the contradictions it found among S/P/R and
+    # how it resolved them. Present whenever the reviewer ran (even when no
+    # contradiction was found, so the audit trail records that it checked).
+    oversight_result: Optional[object] = None  # MetaOversightResult
+    oversight_overridden: bool = False  # True if it changed the decision or style
+
+    # ── Reasoning Trace (FN#082, when wired) ──
+    # المحاجج's constitutional basis for the final decision — which field notes
+    # justify why the decision was EXECUTE/CLARIFY/SAFE_STOP/SAFE_FREEZE/BLOCKED.
+    # Present whenever the reasoning trace engine ran.
+    reasoning_trace: Optional[object] = None  # ReasoningTrace
+
+    # ── المُحاجج (FN#026 + FN#060, when wired) ──
+    # Audience-adapted justification for the decision, including alternative
+    # response paths and frame elevation text (when user is arguing).
+    # For CLARIFY decisions, the primary_justification is also injected into
+    # governed_prompt so the LLM knows how to explain the pause to the user.
+    justification: Optional[object] = None  # JustificationResult
+
+    # ── Responsible Authority Doctrine (FN#014, when wired) ──
+    # The resolved AuthorityContext for the authority that issued this request
+    # (role, permissions, who delegated them). Present only when the caller
+    # supplied an authority_id and the doctrine is wired. None means the
+    # request was processed without an authority assertion (legacy behaviour).
+    authority_context: Optional[object] = None  # AuthorityContext
+
+    # ── Five-Layer Intent Model (FN#024, when wired) ──
+    # The five simultaneous intent layers (Primary, Secondary, Hidden,
+    # Protective, Emotional) read from the user message, with the dominant
+    # layer, ambiguity score, and safety-relevance flag. Present whenever the
+    # analyzer ran (after S(d) is computed). Pure annotation — never alters S(d).
+    intent_layers: Optional[object] = None  # FiveLayerResult
+
+    # ── Logic Profile Scanner (FN#048, when wired) ──
+    # The user's reasoning STYLE (Reductionist, Challenger, Tester, Sincere
+    # Learner, Ego-Driven) read from observable language patterns only — never
+    # hidden psychological claims. Carries the primary/secondary profile, all
+    # five readings, a profile-mix flag, and the recommended response tone.
+    # Present whenever the scanner ran (after S(d) is computed). Pure annotation
+    # — never alters S(d). On proceed decisions the recommended tone is also
+    # injected into governed_prompt.
+    logic_profile: Optional[object] = None  # LogicProfileResult
+
+    # ── Multi-Intent Collision Handler (FN#036, when wired) ──
+    # Whether the message carries two conflicting intents, the classified
+    # collision(s) (Parallel, Hierarchical, Cross-Layer, Structural-Semantic,
+    # High-Risk), the highest-risk category, and the recommended resolution
+    # (Safe-Split, Safe-Merge, Escalate). Present whenever the handler ran
+    # (after S(d) is computed). Pure annotation — never alters S(d). On proceed
+    # decisions ESCALATE/SAFE_SPLIT guidance is injected into governed_prompt.
+    intent_collisions: Optional[object] = None  # CollisionResult
+
     # ── Diagnostics ──
     stage_reached: str = ""
     processing_time_ms: float = 0.0
@@ -320,6 +577,14 @@ class AATIFGovernor:
         contextual_intent: Optional[object] = None,
         judgment_memory: Optional[object] = None,
         response_shaper: Optional[object] = None,
+        false_goodness_detector: Optional[object] = None,
+        meta_oversight: Optional[object] = None,
+        reasoning_trace_engine: Optional[object] = None,
+        muhajij: Optional[object] = None,
+        authority_doctrine: Optional[object] = None,
+        five_layer_intent: Optional[object] = None,
+        logic_profile_scanner: Optional[object] = None,
+        multi_intent_handler: Optional[object] = None,
         profile: str = "default",
         equation_mode: str = "gated",
         user_timezone: str = "Asia/Riyadh",
@@ -359,6 +624,7 @@ class AATIFGovernor:
         # ── S(d) — the calibrated semantic engine (C1) ──
         # Construction can fail when Ollama is down: the I/E scorers RAISE
         # (they do not fall back) the moment they cannot reach the daemon.
+        _s_engine_injected = s_engine is not None
         if s_engine is None:
             try:
                 s_engine = AATIFEngine()
@@ -430,6 +696,104 @@ class AATIFGovernor:
         # Converts decisions into rich LLM instructions with dialect,
         # tone, firmness, and forbidden phrases.
         self.response_shaper = response_shaper  # Optional[AATIFResponseShaper]
+
+        # ── False Goodness Detector (FN#049) — optional pre-S H-boost ──
+        # Passed into s_engine.compute() so it runs after H/I/E scoring and
+        # before the S decision. When it fires, H is boosted so the gated
+        # S-equation treats the message as the harm it actually carries,
+        # despite the caring / educational / protective surface. NEVER alters
+        # the S equation itself — it only raises H.
+        #
+        # Auto-enabled in production: when the Governor built the real engine
+        # itself (Ollama is therefore up) and the caller didn't inject one, we
+        # construct a default detector. When the engine was INJECTED (tests,
+        # custom wiring) we leave it None so the "runs without Ollama" contract
+        # holds — inject one explicitly to enable it there.
+        if (
+            false_goodness_detector is None
+            and not _s_engine_injected
+            and not self._degraded
+            and HAS_FALSE_GOODNESS
+        ):
+            try:
+                false_goodness_detector = FalseGoodnessDetector()
+            except Exception:
+                # Enhancement layer — never brick a Governor that otherwise
+                # has a calibrated backend. The base H/I/E pipeline still runs.
+                false_goodness_detector = None
+        self.false_goodness_detector = false_goodness_detector
+
+        # ── Meta-Oversight Engine (FN#031) — المُراجع ──
+        # Pure logic, no backend dependency, so it is always constructed unless
+        # the caller injected one or the module is unavailable. It runs after
+        # S/P/R every pass and never influences S(d) scoring — it only resolves
+        # contradictions among the already-computed outputs (escalating the
+        # decision toward caution and/or tightening R's style).
+        if meta_oversight is None and HAS_META_OVERSIGHT:
+            meta_oversight = MetaOversightEngine()
+        self.meta_oversight = meta_oversight
+
+        # ── Reasoning Trace Engine (FN#082) — المحاجج ──
+        # Pure logic, no backend dependency — always constructed unless the
+        # caller injected one or the module is unavailable. Runs AFTER the
+        # final decision is reached (post meta-oversight) to build the
+        # constitutional basis for that decision. Never influences any decision.
+        if reasoning_trace_engine is None and HAS_REASONING_TRACE:
+            reasoning_trace_engine = ReasoningTraceEngine()
+        self.reasoning_trace_engine = reasoning_trace_engine
+
+        # ── المُحاجج (FN#026 + FN#060) ──
+        # Pure logic, no backend dependency — always constructed unless the
+        # caller injected one or the module is unavailable. Generates
+        # audience-adapted justification after the final decision is reached.
+        # For CLARIFY decisions, text is injected into the governed prompt.
+        # Never influences any decision — pure explanation and annotation.
+        if muhajij is None and HAS_MUHAJIJ:
+            muhajij = AlMuhajij()
+        self.muhajij = muhajij
+
+        # ── Responsible Authority Doctrine (FN#014) — عقيدة السلطة ──
+        # Pure logic, no backend dependency — always constructed unless the
+        # caller injected one or the module is unavailable. Provides the
+        # runtime authorization layer: who is asking, and are they allowed to
+        # modify safety parameters. Auto-constructed with the default OWNER
+        # (the Architect). It enforces permissions only when a caller supplies
+        # an authority_id to process() — otherwise the Governor behaves exactly
+        # as before (no gating). Never influences S(d) scoring.
+        if authority_doctrine is None and HAS_AUTHORITY:
+            authority_doctrine = AuthorityDoctrine(owner_id=DEFAULT_OWNER_ID)
+        self.authority_doctrine = authority_doctrine
+
+        # ── Five-Layer Intent Model (FN#024) — نية بخمس طبقات ──
+        # Pure logic, no backend dependency — always constructed unless the
+        # caller injected one or the module is unavailable. Runs AFTER S(d) is
+        # computed to read the five intent layers. For CLARIFY decisions with a
+        # HIDDEN/PROTECTIVE dominant layer it enriches the governed prompt.
+        # Never influences S(d) scoring — pure annotation and prompt enrichment.
+        if five_layer_intent is None and HAS_FIVE_LAYER_INTENT:
+            five_layer_intent = FiveLayerIntentAnalyzer()
+        self.five_layer_intent = five_layer_intent
+
+        # ── Logic Profile Scanner (FN#048) — ماسح المنطق ──
+        # Pure logic, no backend dependency — always constructed unless the
+        # caller injected one or the module is unavailable. Runs AFTER S(d) is
+        # computed to read the user's reasoning STYLE from observable language
+        # patterns only (never hidden psychological claims). On proceed
+        # decisions its recommended tone enriches the governed prompt so the LLM
+        # adapts HOW it answers. Never influences S(d) scoring — pure annotation.
+        if logic_profile_scanner is None and HAS_LOGIC_PROFILE:
+            logic_profile_scanner = LogicProfileScanner()
+        self.logic_profile_scanner = logic_profile_scanner
+
+        # ── Multi-Intent Collision Handler (FN#036) — تصادم النوايا المتعددة ──
+        # Pure logic, no backend dependency — always constructed unless the
+        # caller injected one or the module is unavailable. Runs AFTER S(d) is
+        # computed to detect whether one message carries two conflicting intents.
+        # On proceed decisions an ESCALATE/SAFE_SPLIT resolution enriches the
+        # governed prompt. Never influences S(d) scoring — pure annotation.
+        if multi_intent_handler is None and HAS_MULTI_INTENT:
+            multi_intent_handler = MultiIntentCollisionHandler()
+        self.multi_intent_handler = multi_intent_handler
 
     # ───────────────────────────────────────────────────
     #  Backend health
@@ -741,6 +1105,7 @@ class AATIFGovernor:
         gap_seconds: Optional[float] = None,
         timestamp: Optional[float] = None,
         remember: bool = True,
+        authority_id: Optional[str] = None,
     ) -> GovernedResponse:
         """
         Run a single message through the full AATIF pipeline.
@@ -761,11 +1126,43 @@ class AATIFGovernor:
             timestamp: unix time to read for the time sense (None = now).
             remember: if True and conversation_id is set, record this turn in
                 conversation memory after processing.
+            authority_id: optional id of the responsible authority (FN#014)
+                issuing this request. When given and the authority doctrine is
+                wired, the Governor resolves the authority's role/permissions,
+                attaches them to the result, and refuses to persist state for
+                roles without PERSISTENT_MEMORY (guests are stateless). When
+                None, the Governor behaves exactly as before (no gating).
 
         Returns:
             GovernedResponse — the full audit trail.
         """
         start = time.perf_counter()
+
+        # ── Responsible Authority Doctrine (FN#014) — عقيدة السلطة ──
+        # Resolve who is asking and what they may do. This NEVER influences
+        # S(d). When no authority_id is supplied (or the doctrine is absent),
+        # authority_context stays None and the pipeline runs exactly as before.
+        authority_context = None
+        persist_ok = True
+        if authority_id is not None and self.authority_doctrine is not None:
+            try:
+                authority_context = (
+                    self.authority_doctrine.get_context_or_none(authority_id)
+                )
+            except Exception:
+                authority_context = None  # graceful — never break the pipeline
+            # Roles without PERSISTENT_MEMORY leave no persistent trace: a guest
+            # is stateless (no judgment ledger, no conversation memory, no
+            # triad update). Only activates for a recognised authority.
+            if authority_context is not None and HAS_AUTHORITY:
+                try:
+                    persist_ok = self.authority_doctrine.check_permission(
+                        authority_id, AuthorityPermission.PERSISTENT_MEMORY
+                    )
+                except Exception:
+                    persist_ok = True  # graceful — leave persistence as-is
+                if not persist_ok:
+                    remember = False
 
         # ── Degraded backend: refuse with a conservative SAFE_STOP ──
         # (Only reachable when on_degraded="safe_stop"; "raise" mode already
@@ -780,6 +1177,7 @@ class AATIFGovernor:
                 ),
                 stage_reached=STAGE_INIT,
                 domain=domain,
+                authority_context=authority_context,
                 processing_time_ms=self._elapsed_ms(start),
             )
 
@@ -829,13 +1227,37 @@ class AATIFGovernor:
             domain=domain,
             conversation_id=conversation_id,
             theta_override=theta_override,
+            false_goodness_detector=self.false_goodness_detector,
         )
         s_decision = s_result["decision"]
 
         # ── Judgment memory: record every S(d) outcome ──
         # Forensic only — does NOT influence S(d). Graceful on failure.
-        judgment_recorded = self._record_judgment(
-            message, s_result, conversation_id, domain,
+        # Skipped for stateless authorities (no PERSISTENT_MEMORY, e.g. guests).
+        judgment_recorded = (
+            self._record_judgment(message, s_result, conversation_id, domain)
+            if persist_ok else False
+        )
+
+        # ── Five-Layer Intent Model (FN#024) — نية بخمس طبقات ──
+        # Read the five intent layers AFTER S(d) so the safety decision is
+        # never influenced. Attached to every response below for the audit
+        # trail; for CLARIFY/HIDDEN|PROTECTIVE it also enriches the prompt.
+        intent_layers = self._analyze_intent_layers(message, s_result)
+
+        # ── Logic Profile Scanner (FN#048) — ماسح المنطق ──
+        # Read the user's reasoning STYLE AFTER S(d) so the safety decision is
+        # never influenced. Attached to every response for the audit trail; on
+        # proceed decisions its recommended tone also enriches the prompt.
+        logic_profile = self._scan_logic_profile(message)
+
+        # ── Multi-Intent Collision Handler (FN#036) — تصادم النوايا المتعددة ──
+        # Detect whether one message carries two conflicting intents AFTER S(d)
+        # so the safety decision is never influenced. Attached to every response
+        # for the audit trail; on proceed decisions ESCALATE/SAFE_SPLIT guidance
+        # also enriches the prompt.
+        intent_collisions = self._analyze_intent_collisions(
+            message, s_result,
         )
 
         # ════════════════════════════════════════════════
@@ -856,6 +1278,10 @@ class AATIFGovernor:
                 stage_reached=STAGE_S,
                 domain=domain,
                 judgment_recorded=judgment_recorded,
+                authority_context=authority_context,
+                intent_layers=intent_layers,
+                logic_profile=logic_profile,
+                intent_collisions=intent_collisions,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             # Dynamic θ: record blocked decision for future θ adjustment
@@ -863,6 +1289,8 @@ class AATIFGovernor:
                     and HAS_TRIAD and conversation_id is not None):
                 self.temporal_memory.record_blocked_decision(
                     conversation_id, DECISION_SAFE_FREEZE)
+            self._build_reasoning_trace(resp)
+            self._build_justification(resp, user_message=message)
             resp.processing_time_ms = self._elapsed_ms(start)
             return resp
 
@@ -888,6 +1316,10 @@ class AATIFGovernor:
                 stage_reached=STAGE_P,
                 domain=domain,
                 judgment_recorded=judgment_recorded,
+                authority_context=authority_context,
+                intent_layers=intent_layers,
+                logic_profile=logic_profile,
+                intent_collisions=intent_collisions,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             # Dynamic θ: record blocked decision for future θ adjustment
@@ -895,6 +1327,13 @@ class AATIFGovernor:
                     and HAS_TRIAD and conversation_id is not None):
                 self.temporal_memory.record_blocked_decision(
                     conversation_id, DECISION_SAFE_STOP)
+            self._build_reasoning_trace(
+                resp, protocol_action=p_result.highest_action,
+            )
+            self._build_justification(
+                resp, user_message=message,
+                protocol_action=p_result.highest_action,
+            )
             resp.processing_time_ms = self._elapsed_ms(start)
             return resp
 
@@ -918,8 +1357,19 @@ class AATIFGovernor:
                 stage_reached=STAGE_P,
                 domain=domain,
                 judgment_recorded=judgment_recorded,
+                authority_context=authority_context,
+                intent_layers=intent_layers,
+                logic_profile=logic_profile,
+                intent_collisions=intent_collisions,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
+            self._build_reasoning_trace(
+                resp, protocol_action=p_result.highest_action,
+            )
+            self._build_justification(
+                resp, user_message=message,
+                protocol_action=p_result.highest_action,
+            )
             resp.processing_time_ms = self._elapsed_ms(start)
             return resp
 
@@ -948,6 +1398,88 @@ class AATIFGovernor:
             gap_seconds=gap_seconds,
         )
 
+        # ════════════════════════════════════════════════
+        #  META-OVERSIGHT — المُراجع (FN#031): the self-reviewer
+        # ════════════════════════════════════════════════
+        # After S, P, and R are all computed but BEFORE the governed prompt is
+        # built, cross-check them for contradictions. CRITICAL (safety)
+        # contradictions escalate the decision toward caution; style
+        # contradictions tighten / warm R's style. Everything is recorded on the
+        # response for the audit trail. This NEVER re-scores S(d) — it only
+        # resolves conflicts among the outputs the engines already produced.
+        oversight_result = None
+        oversight_overridden = False
+        if self.meta_oversight is not None:
+            try:
+                oversight_result = self.meta_oversight.check_coherence(
+                    s_decision=s_decision,
+                    p_response=p_result,
+                    r_style=r_result,
+                    h_score=s_result.get("H", 0.0),
+                    i_score=s_result.get("I", 0.0),
+                    e_score=s_result.get("E", 0.0),
+                )
+            except Exception:
+                oversight_result = None  # graceful — never break the pipeline
+
+        if oversight_result is not None and oversight_result.requires_override:
+            corrected_decision = oversight_result.corrected_values.get("decision")
+            corrected_style = oversight_result.corrected_values.get("style")
+
+            # Style correction: tighten / warm R before the prompt is composed.
+            if corrected_style and corrected_style != r_result.style_recommendation:
+                r_result.gate_flags.append(
+                    f"META_OVERSIGHT: style {r_result.style_recommendation} → "
+                    f"{corrected_style} ({oversight_result.resolution_action})"
+                )
+                r_result.style_recommendation = corrected_style
+                oversight_overridden = True
+
+            # Decision override: المُراجع may only escalate toward caution.
+            if corrected_decision and corrected_decision != s_decision:
+                oversight_overridden = True
+                # If the stricter reading is no longer a "proceed" decision, the
+                # reviewer has effectively blocked the message — enforce it.
+                if corrected_decision not in _PROCEED_DECISIONS:
+                    resp = GovernedResponse(
+                        final_decision=corrected_decision,
+                        blocked=True,
+                        block_reason=(
+                            f"Meta-Oversight (المُراجع) escalated "
+                            f"{s_decision} → {corrected_decision}: "
+                            f"{oversight_result.severity} cross-engine "
+                            f"contradiction. Safety wins."
+                        ),
+                        s_result=s_result,
+                        p_result=p_result,
+                        r_result=r_result,
+                        memory_context=memory_context,
+                        stage_reached=STAGE_P,
+                        domain=domain,
+                        triad_context=triad_context,
+                        judgment_recorded=judgment_recorded,
+                        authority_context=authority_context,
+                        intent_layers=intent_layers,
+                        logic_profile=logic_profile,
+                        intent_collisions=intent_collisions,
+                        oversight_result=oversight_result,
+                        oversight_overridden=True,
+                    )
+                    self._remember(
+                        conversation_id, remember, message, None, timestamp
+                    )
+                    self._build_reasoning_trace(
+                        resp, protocol_action=p_result.highest_action,
+                    )
+                    self._build_justification(
+                        resp, user_message=message,
+                        protocol_action=p_result.highest_action,
+                    )
+                    resp.processing_time_ms = self._elapsed_ms(start)
+                    return resp
+                # Still a proceed decision (e.g. EXECUTE → CLARIFY): adopt it.
+                s_decision = corrected_decision
+
         # ── C3: EMERGENCY means the response MUST carry emergency guidance ──
         emergency = p_result.highest_action == ACTION_EMERGENCY
 
@@ -957,8 +1489,27 @@ class AATIFGovernor:
         response_shape = self._shape_response(s_result, memory_context)
 
         # ════════════════════════════════════════════════
+        #  المُحاجج justification (FN#026 + FN#060)
+        #  Built BEFORE prompt composition so it can be injected into
+        #  the governed prompt for CLARIFY decisions.
+        # ════════════════════════════════════════════════
+        justification_result = None
+        if self.muhajij is not None and HAS_MUHAJIJ:
+            try:
+                justification_result = self.muhajij.justify(
+                    decision=s_decision,
+                    h=s_result.get("H", 0.0),
+                    s=s_result.get("S", 0.0),
+                    domain=domain,
+                    user_message=message,
+                    protocol_action=p_result.highest_action,
+                )
+            except Exception:
+                pass  # graceful degradation — never break the pipeline
+
+        # ════════════════════════════════════════════════
         #  Compose the governed prompt (P instructions + R style + memory
-        #  + triad context + response shape)
+        #  + triad context + response shape + justification for CLARIFY)
         # ════════════════════════════════════════════════
         governed_prompt = self._compose_prompt(
             message=message,
@@ -970,6 +1521,10 @@ class AATIFGovernor:
             emergency=emergency,
             triad_context=triad_context,
             response_shape=response_shape,
+            justification=justification_result,
+            intent_layers=intent_layers,
+            logic_profile=logic_profile,
+            intent_collisions=intent_collisions,
         )
 
         resp = GovernedResponse(
@@ -985,7 +1540,14 @@ class AATIFGovernor:
             domain=domain,
             triad_context=triad_context,
             judgment_recorded=judgment_recorded,
+            authority_context=authority_context,
+            intent_layers=intent_layers,
+            logic_profile=logic_profile,
+            intent_collisions=intent_collisions,
             response_shape=response_shape,
+            oversight_result=oversight_result,
+            oversight_overridden=oversight_overridden,
+            justification=justification_result,
         )
 
         # ── No LLM hook: stop at the governed prompt. The output gate only
@@ -993,11 +1555,15 @@ class AATIFGovernor:
         if llm_fn is None:
             self._remember(conversation_id, remember, message, None, timestamp)
             # Update triad modules even without LLM response.
-            if conversation_id is not None:
+            # Skipped for stateless authorities (no PERSISTENT_MEMORY).
+            if conversation_id is not None and persist_ok:
                 self._update_triad(
                     conversation_id, message, timestamp,
                     s_result, triad_context,
                 )
+            self._build_reasoning_trace(
+                resp, protocol_action=p_result.highest_action,
+            )
             resp.processing_time_ms = self._elapsed_ms(start)
             return resp
 
@@ -1049,11 +1615,15 @@ class AATIFGovernor:
             conversation_id, remember, message, resp.final_response, timestamp
         )
         # Update triad modules after full pipeline processing.
-        if conversation_id is not None:
+        # Skipped for stateless authorities (no PERSISTENT_MEMORY).
+        if conversation_id is not None and persist_ok:
             self._update_triad(
                 conversation_id, message, timestamp,
                 s_result, triad_context,
             )
+        self._build_reasoning_trace(
+            resp, protocol_action=p_result.highest_action,
+        )
         resp.processing_time_ms = self._elapsed_ms(start)
         return resp
 
@@ -1073,6 +1643,10 @@ class AATIFGovernor:
         emergency: bool,
         triad_context: Optional[dict] = None,
         response_shape: Optional[object] = None,
+        justification: Optional[object] = None,
+        intent_layers: Optional[object] = None,
+        logic_profile: Optional[object] = None,
+        intent_collisions: Optional[object] = None,
     ) -> str:
         """
         Build the governed prompt the LLM would receive.
@@ -1081,6 +1655,10 @@ class AATIFGovernor:
         memory context, and triad enrichment are actually MERGED — the
         integration the review found missing. The Governor never calls a
         model; it prepares this text.
+
+        For CLARIFY decisions, the justification (المُحاجج) is also included
+        so the LLM knows HOW to explain the clarification need to the user
+        and what alternative approaches to suggest.
         """
         lines: list[str] = []
         lines.append("# AATIF GOVERNED PROMPT — عاطف")
@@ -1184,6 +1762,121 @@ class AATIFGovernor:
                     f"Forbidden phrases: {', '.join(forbidden)}"
                 )
 
+        # ── المُحاجج justification guidance (FN#026, FN#060) ──
+        # Included only for CLARIFY decisions: tells the LLM HOW to explain
+        # the pause and what alternative approaches to suggest to the user.
+        # EXECUTE decisions need no explanation; blocked decisions have no prompt.
+        if (
+            justification is not None
+            and getattr(justification, "decision", "") == DECISION_CLARIFY
+        ):
+            just_text = getattr(justification, "primary_justification", "")
+            if just_text:
+                lines.append("")
+                lines.append("## توجيه المُحاجج — justification (FN#026, FN#060)")
+                lines.append(just_text)
+            active_paths = [
+                p for p in getattr(justification, "alternative_paths", [])
+                if getattr(p, "is_active", True) and getattr(p, "is_safe", True)
+            ]
+            if active_paths:
+                lines.append("Suggest these alternatives to the user:")
+                for path in active_paths:
+                    lines.append(f"  - {path.approach}")
+            fe = getattr(justification, "frame_elevation", None)
+            if fe:
+                lines.append(f"If the user argues, use this elevated frame: {fe}")
+
+        # ── Five-Layer Intent guidance (FN#024) ──
+        # When the surface request hides a deeper layer, the clarification must
+        # be shaped to the layer. Injected only when the decision is CLARIFY and
+        # the dominant layer is HIDDEN (internal fear) or PROTECTIVE (external
+        # avoidance) — the two cases where HOW you clarify matters most. HIDDEN
+        # needs gentle, low-pressure clarification; PROTECTIVE needs the external
+        # concern addressed without stripping the protective frame.
+        if (
+            intent_layers is not None
+            and HAS_FIVE_LAYER_INTENT
+            and s_result.get("decision") == DECISION_CLARIFY
+        ):
+            dominant = getattr(intent_layers, "dominant_layer", None)
+            if dominant in (IntentLayer.HIDDEN, IntentLayer.PROTECTIVE):
+                approach = five_layer_recommend_approach(intent_layers)
+                lines.append("")
+                lines.append(
+                    "## طبقات النية — five-layer intent guidance (FN#024)"
+                )
+                lines.append(
+                    f"Dominant intent layer: {dominant.value} — the surface "
+                    f"request is not the real one."
+                )
+                lines.append(approach)
+
+        # ── Logic Profile tone guidance (FN#048) ──
+        # Read how they think before deciding how to respond. When a reasoning
+        # style is detected, inject the recommended tone so the LLM adapts HOW
+        # it answers (e.g. a methodical Tester gets data and sources; a Sincere
+        # Learner gets a warm step-by-step explanation). Based ONLY on observable
+        # language patterns — never a psychological claim about the user.
+        if (
+            logic_profile is not None
+            and HAS_LOGIC_PROFILE
+            and getattr(logic_profile, "detected_profiles", None)
+            and logic_profile.detected_profiles()
+        ):
+            primary = getattr(logic_profile, "primary_profile", None)
+            tone = getattr(logic_profile, "recommended_tone", "")
+            if primary is not None and tone:
+                lines.append("")
+                lines.append(
+                    "## ماسح المنطق — logic profile tone (FN#048)"
+                )
+                style_note = (
+                    f"User's reasoning style reads as: {primary.value}"
+                )
+                if getattr(logic_profile, "profile_mix", False):
+                    style_note += " (mixed style — stay flexible)"
+                lines.append(style_note)
+                lines.append(tone)
+
+        # ── Multi-Intent Collision guidance (FN#036) ──
+        # When one message carries two conflicting intents, tell the LLM NOT to
+        # blindly blend them. ESCALATE (high-risk) and SAFE_SPLIT resolutions are
+        # injected so the model handles the collision deliberately: escalate to a
+        # human, or satisfy each intent separately and in order. A SAFE_MERGE is
+        # left implicit — merging is the natural default, so no special guidance
+        # is needed. Based ONLY on observable language patterns.
+        if (
+            intent_collisions is not None
+            and HAS_MULTI_INTENT
+            and getattr(intent_collisions, "has_collision", False)
+        ):
+            top = None
+            collisions = getattr(intent_collisions, "collisions", []) or []
+            if collisions:
+                top = max(
+                    collisions,
+                    key=lambda c: _COLLISION_SEVERITY.get(c.collision_type, 0),
+                )
+            resolution = getattr(top, "resolution", None) if top else None
+            if resolution in (
+                ResolutionStrategy.ESCALATE, ResolutionStrategy.SAFE_SPLIT
+            ):
+                hr = getattr(intent_collisions, "highest_risk", None)
+                action = getattr(intent_collisions, "recommended_action", "")
+                lines.append("")
+                lines.append(
+                    "## تصادم النوايا — multi-intent collision (FN#036)"
+                )
+                lines.append(
+                    f"Two conflicting intents detected "
+                    f"(type: {hr.value if hr else 'unknown'}, "
+                    f"resolution: {resolution.value}). Do NOT blend them into a "
+                    f"distorted middle."
+                )
+                if action:
+                    lines.append(action)
+
         # ── The user message ──
         lines.append("")
         lines.append("## رسالة المستخدم — user message")
@@ -1261,9 +1954,184 @@ class AATIFGovernor:
         gap = now - last_ts
         return gap if gap >= 0 else None
 
+    def _build_reasoning_trace(
+        self,
+        resp: "GovernedResponse",
+        protocol_action: Optional[str] = None,
+    ) -> None:
+        """Attach a constitutional reasoning trace to resp (in-place, graceful).
+
+        Called after the final decision is set on resp but before the response is
+        returned.  No-ops when the reasoning trace engine is absent or when resp
+        has no s_result (degraded backend path — no scores available).
+
+        NEVER influences the decision — pure annotation.
+        """
+        if self.reasoning_trace_engine is None:
+            return
+        if resp.s_result is None:
+            return
+        try:
+            resp.reasoning_trace = self.reasoning_trace_engine.trace(
+                decision=resp.final_decision,
+                h=resp.s_result.get("H", 0.0),
+                i=resp.s_result.get("I", 0.0),
+                e=resp.s_result.get("E", 0.0),
+                s=resp.s_result.get("S", 0.0),
+                domain=resp.domain or "general",
+                protocol_action=protocol_action,
+                meta_oversight_result=resp.oversight_result,
+            )
+        except Exception:
+            pass  # graceful degradation — never break the pipeline
+
+    def _build_justification(
+        self,
+        resp: "GovernedResponse",
+        user_message: str = "",
+        protocol_action: Optional[str] = None,
+    ) -> None:
+        """Attach audience-adapted justification to resp (in-place, graceful).
+
+        Called after the final decision is set on resp.  No-ops when المُحاجج
+        is absent or resp has no s_result (degraded backend path).
+
+        NEVER influences the decision — pure annotation and explanation.
+        """
+        if self.muhajij is None:
+            return
+        if resp.s_result is None:
+            return
+        try:
+            resp.justification = self.muhajij.justify(
+                decision=resp.final_decision,
+                h=resp.s_result.get("H", 0.0),
+                s=resp.s_result.get("S", 0.0),
+                domain=resp.domain or "general",
+                user_message=user_message,
+                protocol_action=protocol_action,
+            )
+        except Exception:
+            pass  # graceful degradation — never break the pipeline
+
+    def _analyze_intent_layers(
+        self, message: str, s_result: Optional[dict],
+    ) -> Optional[object]:
+        """Read the five intent layers (FN#024) from the message.
+
+        Returns a FiveLayerResult, or None when the analyzer is absent. Uses the
+        already-computed H/I/E scores to sharpen the reading. Pure logic — never
+        influences S(d). Graceful: any failure returns None.
+        """
+        if self.five_layer_intent is None:
+            return None
+        try:
+            s = s_result or {}
+            return self.five_layer_intent.analyze(
+                message,
+                h_score=s.get("H", 0.0),
+                i_score=s.get("I", 0.0),
+                e_score=s.get("E", 0.0),
+            )
+        except Exception:
+            return None  # graceful degradation — never break the pipeline
+
+    def _scan_logic_profile(self, message: str) -> Optional[object]:
+        """Read the reasoning STYLE (FN#048) from the message.
+
+        Returns a LogicProfileResult, or None when the scanner is absent.
+        Analyses observable language patterns only — never hidden psychological
+        claims. Pure logic — never influences S(d). Graceful: any failure
+        returns None.
+        """
+        if self.logic_profile_scanner is None:
+            return None
+        try:
+            return self.logic_profile_scanner.scan(message)
+        except Exception:
+            return None  # graceful degradation — never break the pipeline
+
+    def _analyze_intent_collisions(
+        self, message: str, s_result: Optional[dict],
+    ) -> Optional[object]:
+        """Detect multi-intent collisions (FN#036) in the message.
+
+        Returns a CollisionResult, or None when the handler is absent. Uses the
+        already-computed H/I scores to sharpen the reading (high H marks a
+        collision high-risk; low I leans a borderline merge toward a split). Pure
+        logic — never influences S(d). Graceful: any failure returns None.
+        """
+        if self.multi_intent_handler is None:
+            return None
+        try:
+            s = s_result or {}
+            return self.multi_intent_handler.analyze(
+                message,
+                h_score=s.get("H"),
+                i_score=s.get("I"),
+            )
+        except Exception:
+            return None  # graceful degradation — never break the pipeline
+
     @staticmethod
     def _elapsed_ms(start: float) -> float:
         return round((time.perf_counter() - start) * 1000.0, 3)
+
+    # ───────────────────────────────────────────────────
+    #  Safe boot factory (FN#045)
+    # ───────────────────────────────────────────────────
+
+    @classmethod
+    def boot(cls, backend=None, domain: str = "general", llm_fn=None):
+        """
+        Boot the Governor with ordered initialization and verification (FN#045).
+
+        Runs the full safe boot sequence before constructing the Governor.
+        Every required stage is verified in order; any failure raises
+        DegradedBackendError before a Governor is ever created.
+
+        Fail-safe: this method either returns a fully-verified Governor or
+        raises — it never silently returns a degraded instance.
+
+        Args:
+            backend: Optional pre-constructed AATIFEngine (or FakeSEngine for
+                tests). When None the real AATIFEngine is constructed — requires
+                a live Ollama/bge-m3.
+            domain: Domain to verify during the DOMAIN_PROTOCOLS boot stage.
+            llm_fn: LLM hook to wire into the returned Governor (optional).
+
+        Returns:
+            (AATIFGovernor, BootResult) — the verified Governor and the full
+            boot audit trail.
+
+        Raises:
+            DegradedBackendError: if any required boot stage fails.
+        """
+        # Lazy import avoids a circular dependency at module load time
+        # (boot_sequence imports from aatif_s_equation etc., not from governor).
+        from aatif_boot_sequence import boot_aatif  # noqa: PLC0415
+
+        boot_result = boot_aatif(backend=backend, domain=domain, llm_fn=llm_fn)
+
+        if not boot_result.ready:
+            stage = boot_result.failed_stage
+            sr = boot_result.stage_results.get(stage)
+            error = sr.error if sr else "unknown error"
+            raise DegradedBackendError(
+                f"Safe boot sequence failed at stage '{stage}': {error}"
+            )
+
+        # Boot verified all required stages. Construct the Governor.
+        # When backend is injected: pass it through and skip the re-check
+        # (boot already proved it is calibrated).  When backend is None:
+        # the Governor constructs the real AATIFEngine itself with its own
+        # calibration check — Ollama must still be reachable.
+        if backend is not None:
+            gov = cls(s_engine=backend, on_degraded="raise", verify_backend=False)
+        else:
+            gov = cls(on_degraded="raise", verify_backend=True)
+
+        return gov, boot_result
 
 
 # ═══════════════════════════════════════════════════════════

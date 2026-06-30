@@ -955,7 +955,8 @@ class AATIFEngine:
                 domain: str = None,
                 link_h_to_i: bool = False,
                 h_i_lambda: float = H_I_LINK_LAMBDA,
-                theta_override: float | None = None) -> dict:
+                theta_override: float | None = None,
+                false_goodness_detector=None) -> dict:
         """
         Run all three scorers on input text, compute S, return decision.
 
@@ -1020,6 +1021,20 @@ class AATIFEngine:
         if link_h_to_i:
             H = link_h_to_intent(H, I, lam=h_i_lambda)
 
+        # FALSE GOODNESS PRE-CHECK (FN#049): catch harm disguised as care,
+        # education, protection, or authority. The detector runs AFTER the
+        # H/I/E scoring and BEFORE the S decision — it only RAISES H (the same
+        # lever the H scorer produces), never touches the S equation itself.
+        # When the caring surface fooled the H scorer (or a discount lowered H
+        # below θ), this restores H to what the actual payload deserves.
+        # Default None → no-op, fully backward compatible.
+        fg_result = None
+        H_pre_fg = H
+        if false_goodness_detector is not None:
+            fg_result = false_goodness_detector.check_false_goodness(text, H, I)
+            if fg_result.h_boosted:
+                H = fg_result.boosted_h
+
         # Compute S and decision using selected equation
         if equation_mode == "gated":
             result = compute_s_gated_from_scores(H, I, E, profile=profile,
@@ -1031,6 +1046,20 @@ class AATIFEngine:
         if link_h_to_i and H != H_raw:
             result["H_raw"] = round(H_raw, 4)
             result["h_i_linked"] = True
+
+        # Record the false-goodness pre-check for the audit trail.
+        if fg_result is not None:
+            result["false_goodness"] = {
+                "score": fg_result.score,
+                "h_boosted": fg_result.h_boosted,
+                "H_before_boost": round(H_pre_fg, 4),
+                "H_after_boost": round(H, 4),
+                "moral_inversion": fg_result.moral_inversion,
+                "detected_patterns": fg_result.detected_patterns,
+                "contrast_analysis": fg_result.contrast_analysis,
+                "virtue_anomaly": fg_result.virtue_anomaly,
+                "confidence": fg_result.confidence,
+            }
 
         # CONFIDENCE AGGREGATION
         # Each scorer now reports confidence (high/medium/low).
