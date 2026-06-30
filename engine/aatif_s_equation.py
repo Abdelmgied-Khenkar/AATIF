@@ -87,6 +87,10 @@ from aatif_intent_scorer import SemanticIntentScorer
 from aatif_emotion_scorer import SemanticEmotionScorer
 from aatif_hysteresis import HysteresisController
 from aatif_arabic_utils import normalize_arabic
+from aatif_drift_detector import (
+    DriftDetector, ConversationManager as DriftConversationManager,
+    compute_h_eff, DRIFT_DETECTION_ENABLED,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -636,6 +640,12 @@ def get_domain_theta(domain: str | None) -> float | None:
 # ---------------------------------------------------------------------------
 DYNAMIC_THETA_ENABLED = False  # Enable Dynamic θ (adaptive threshold)
 REGEX_V2_ENABLED = False       # Enable Regex v2 (normalization + CBRN context)
+# FN#058: Context Drift Detection — adds temporal pressure to H via DriftRisk.
+# When enabled, multi-turn conversations accumulate drift evidence and
+# H_eff = clamp(H + λ·DriftRisk) is used in the gated equation instead of raw H.
+# Controlled by DRIFT_DETECTION_ENABLED in aatif_drift_detector.py.
+# This flag here is an ENGINE-level override: both must be True for drift to run.
+DRIFT_IN_ENGINE_ENABLED = DRIFT_DETECTION_ENABLED
 
 _DYNAMIC_THETA_DELTA_MAX = 0.15   # δ_max: maximum downward θ adjustment
 _DYNAMIC_THETA_LAMBDA = 0.3       # λ: decay constant for Ψ
@@ -809,7 +819,8 @@ def compute_s_from_scores(H: float, I: float, E: float,
 def compute_s_gated_from_scores(H: float, I: float, E: float,
                                 profile: str = "default",
                                 domain: str | None = None,
-                                theta_override: float | None = None) -> dict:
+                                theta_override: float | None = None,
+                                drift_risk: float = 0.0) -> dict:
     """
     Compute S using the GATED equation, with F and decision.
 
@@ -852,17 +863,26 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
         theta = theta_override
         theta_source = "dynamic"
 
-    # HARD OVERRIDE: H above absolute threshold → immediate freeze
+    # FN#058: Compute H_eff — temporal pressure from multi-turn drift.
+    # H_eff = clamp(H + λ·DriftRisk, 0, 1).
+    # When drift_risk is 0.0 (default / single-turn), H_eff == H — no change.
+    H_eff = compute_h_eff(H, drift_risk) if drift_risk > 0.0 else H
+
+    # HARD OVERRIDE: H_eff above absolute threshold → immediate freeze
     # This is ABSOLUTE — no domain, no profile, no exception.
-    if H > H_GATED_HARD_OVERRIDE:
+    # Uses H_eff so multi-turn drift pressure can trigger hard override
+    # even when no single turn exceeds 0.7 alone (FN#058 design consensus).
+    if H_eff > H_GATED_HARD_OVERRIDE:
         # Still compute S for diagnostics, but decision is forced
         quality = sigmoid(w1 * I + w2 * E)
-        gate = 1.0 - sigmoid(alpha * (H - theta))
+        gate = 1.0 - sigmoid(alpha * (H_eff - theta))
         S = quality * gate
         F_prime = 1.0 * (1.0 - S)
-        F = max(F_prime, K_HARM_FLOOR * H)
+        F = max(F_prime, K_HARM_FLOOR * H_eff)
         return {
             "H": round(H, 4),
+            "H_eff": round(H_eff, 4),
+            "drift_risk": round(drift_risk, 4),
             "I": round(I, 4),
             "E": round(E, 4),
             "quality": round(quality, 4),
@@ -879,15 +899,15 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
             "hard_override": True,
         }
 
-    # Normal gated computation
+    # Normal gated computation — uses H_eff for the gate
     quality = sigmoid(w1 * I + w2 * E)
-    gate = 1.0 - sigmoid(alpha * (H - theta))
+    gate = 1.0 - sigmoid(alpha * (H_eff - theta))
     S = quality * gate
 
     # Follow-up signal (same formula as classic)
     D = 1.0
     F_prime = D * (1.0 - S)
-    F = max(F_prime, K_HARM_FLOOR * H)
+    F = max(F_prime, K_HARM_FLOOR * H_eff)
 
     # Decision from thresholds (same thresholds as classic)
     decision = "SAFE_FREEZE"
@@ -898,6 +918,8 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
 
     return {
         "H": round(H, 4),
+        "H_eff": round(H_eff, 4),
+        "drift_risk": round(drift_risk, 4),
         "I": round(I, 4),
         "E": round(E, 4),
         "quality": round(quality, 4),
@@ -946,6 +968,10 @@ class AATIFEngine:
         print(f"  E scorer ready ({self.e_scorer.backend_name})")
         self.hysteresis = HysteresisController()
         print("  γ+ hysteresis ready")
+        # FN#058: Drift detection — multi-turn scope integrity
+        self.drift_detector = DriftDetector()
+        self.drift_conversation_manager = DriftConversationManager()
+        print("  FN#058 drift detector ready")
         print("[AATIF] Engine ready.\n")
 
     def compute(self, text: str, profile: str = "default",
@@ -1035,17 +1061,55 @@ class AATIFEngine:
             if fg_result.h_boosted:
                 H = fg_result.boosted_h
 
+        # FN#058: DRIFT DETECTION — multi-turn scope integrity.
+        # Runs AFTER H/I/E scoring + false_goodness, BEFORE S computation.
+        # Only active in gated mode with a conversation_id.
+        # DriftDetector is OBSERVATIONAL — it outputs DriftRisk (a scalar).
+        # The equation (below) uses DriftRisk to compute H_eff = H + λ·DriftRisk.
+        # Single Mind: only the equation makes safety decisions.
+        drift_risk = 0.0
+        drift_result = None
+        if (DRIFT_IN_ENGINE_ENABLED
+                and equation_mode == "gated"
+                and conversation_id is not None):
+            prior_state = self.drift_conversation_manager.get_state(conversation_id)
+            # nearest anchor text serves as category proxy
+            nearest_anchor = ""
+            if h_result.get("nearest"):
+                nearest_anchor = h_result["nearest"][0][0] if isinstance(h_result["nearest"][0], (list, tuple)) else str(h_result["nearest"][0])
+            drift_result = self.drift_detector.update(
+                text=text,
+                H=H,
+                I=I,
+                E=E,
+                nearest_anchor=nearest_anchor,
+                prior_state=prior_state,
+            )
+            drift_risk = drift_result.drift_risk
+            self.drift_conversation_manager.save_state(
+                conversation_id, drift_result.updated_state
+            )
+
         # Compute S and decision using selected equation
         if equation_mode == "gated":
             result = compute_s_gated_from_scores(H, I, E, profile=profile,
                                                   domain=domain,
-                                                  theta_override=theta_override)
+                                                  theta_override=theta_override,
+                                                  drift_risk=drift_risk)
         else:
             result = compute_s_from_scores(H, I, E, profile=profile)
         result["text"] = text
         if link_h_to_i and H != H_raw:
             result["H_raw"] = round(H_raw, 4)
             result["h_i_linked"] = True
+
+        # FN#058: Record drift detection result for the audit trail.
+        if drift_result is not None:
+            result["drift"] = {
+                "drift_risk": round(drift_result.drift_risk, 4),
+                "evidence": drift_result.evidence,
+                "turn_count": len(drift_result.updated_state.harm_history),
+            }
 
         # Record the false-goodness pre-check for the audit trail.
         if fg_result is not None:

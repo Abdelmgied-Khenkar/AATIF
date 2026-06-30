@@ -1,7 +1,25 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-06-29 by Cowork session (✅ المراحل الثلاث كاملة! أ+ب+ج — 10 موديولات، 212+ اختبار جديد في المرحلة ج وحدها، 2058 إجمالي، صفر تراجع)
+Last updated: 2026-06-30 by Cowork session (✅ مراجعة خارجية 3 موديلات: Gemini+Grok+ChatGPT. إعادة ترتيب الأولويات. التقرير في EXTERNAL_REVIEW_SYNTHESIS.md)
 
-## Urgent (هذا الأسبوع)
+## Urgent (هذا الأسبوع) — بعد المراجعة الخارجية 2026-06-30
+
+### ✅ مراجعة خارجية مكتملة (2026-06-30)
+- [x] (AATIF) ✅ **مراجعة Gemini** — رد كامل ومفصّل
+- [x] (AATIF) ✅ **مراجعة Grok** — رد كامل ومفصّل (45 ثانية تفكير)
+- [x] (AATIF) ✅ **مراجعة ChatGPT** — رد كامل (5 أقسام)
+- [x] (AATIF) ⚠️ **مراجعة DeepSeek** — رد ضعيف (Instant mode، افتراضات مش تفاصيل فعلية)
+- [x] (AATIF) ✅ **تجميع وتحليل** — `EXTERNAL_REVIEW_SYNTHESIS.md` محفوظ
+
+### خطة تنفيذ جديدة (من المراجعة الخارجية — إجماع 3 موديلات):
+- [x] (AATIF) ✅ **FN#058 — Context Drift Detection** — أولوية 1. 2026-06-30: `engine/aatif_drift_detector.py` (DriftDetector + ConversationManager + compute_h_eff) + تكامل في `aatif_s_equation.py` (H_eff في gate + hard override). 54 اختبار جديد (`test_drift_detector.py`) + 349 اختبار سابق = صفر تراجع. B-prime architecture: detector=observational، equation=judicial. Single Mind محفوظ.
+- [ ] (AATIF) **FN#070 — Possibility Space** — أولوية 2 (أقوى ترقية مفاهيمية — من binary لـ distributional)
+- [ ] (AATIF) **NEW: Uncertainty/Calibration module** — أولوية 3 (الثلاثة بشكل مستقل: النظام يحتاج يعرف لما مش متأكد)
+- [ ] (AATIF) **FN#050 — Dual-Root Reconstruction** — أولوية 4 (خلاف: Gemini=AI-complete، Grok+ChatGPT=أقوى إسهام عربي)
+- [ ] (AATIF) **FN#044 — Temporal Safety Decay** — أولوية 5 (يحوّل النظام لـ conversation-level)
+- [ ] (AATIF) **FN#041 — Safety Inheritance** — أولوية 6 (مع FN#044 يكملوا بعض)
+- [ ] (AATIF) **Evaluation strengthening** — baselines حقيقية (Llama Guard)، توسعة held-out، ablation studies
+
+### Urgent سابق:
 - [x] (AATIF) ✅ **تصحيح الأخطاء الحسابية AE1-AE5** — 2026-06-26: 5 أخطاء اتصلحت في الورقة (ARITHMETIC_FIXES_2026-06-26.md)
 - [x] (AATIF) ✅ **ربط المحركين C1** — 2026-06-26: تم التحقق أن الربط كان موجود فعلاً. المحرك الدلالي هو المستخدم في الـ pipeline.
 - [x] (AATIF) ✅ **ربط المحافظ C2** — 2026-06-26: صلحنا الفجوة الوحيدة (llm_fn param للـ Output Gate). 6 اختبارات تكامل جديدة. 933 نجحت / 0 فشل.
@@ -19,11 +37,11 @@ Last updated: 2026-06-29 by Cowork session (✅ المراحل الثلاث كا
 - [x] (AATIF) ✅ **كتابة "الثوابت الأخلاقية"** — 2026-06-29: `design/ETHICAL_CONSTANTS.md`. ١٠ ثوابت معتمدة + ٥ اكتشافات من الفيلد نوتس (FN#049 كاشف الخير الزائف، FN#052 منع الانجراف، FN#054 الاحترام البنيوي، FN#039 درع النزاهة، FN#029 الأمان تدريجي). كل ثابت مربوط بالكود + الفيلد نوت الأصلي.
 - [x] (AATIF) ✅ **تغطية تصميمية للأربع موديولات العضوية** — 2026-06-29: `design/MODULE_FIELD_NOTE_MAP.md`. خريطة ربط: Governor←5FN, Output Gate←5FN, Judgment Memory←4FN, Time Sense←3FN. الفيلد نوتس هي الأصل، مش تصميم جديد.
 - [ ] (AATIF) تحديث Zenodo — رفع النسخة الجديدة بعد تصحيح الورقة
-- [ ] (AATIF) إصلاح وصّال agent SKILL.md — يقول 164 اختبار (المفروض 1,524) و θ fixed (المفروض θ(d)) — يحتاج تعديل يدوي من Settings → Capabilities
+- [ ] (AATIF) إصلاح وصّال agent SKILL.md — يقول 164 اختبار (المفروض 2,065) و θ fixed (المفروض θ(d)) — يحتاج تعديل يدوي من Settings → Capabilities
 - [x] (AATIF) ✅ **تحديث الورقة: مبدأ الخياط** — 2026-06-29 audit: v2 paper already has §6.1 "The Tailor Principle: Fixed Design, Variable Fit" + abstract reframed ("without model retraining" + "fixed-architecture extensibility"). No "zero fine-tuning" self-claim in v2. (Note: aatif_paper_acl.tex still has old language — minor, v2 is official)
 - [ ] (AATIF) **تشغيل سكربت Llama Guard** — السكربت موجود (`benchmarks/llamaguard_comparison.py`) لكن محتاج Together AI API key عشان يشتغل — ما في results JSON بعد
 - [x] (AATIF) ✅ **Inter-annotator agreement** — 2026-06-29: `benchmarks/iaa_dataset.json` (150 حالة: 80 ALLOW/19 CLARIFY/51 BLOCK) + `benchmarks/run_iaa.py` (سكربت كامل: Cohen's κ × 3 أزواج، Fleiss' κ، per-class P/R/F1). محتاج Ollama+bge-m3 للتشغيل.
-- [x] (AATIF) ✅ **تحديث عدد الاختبارات في الورقة** — 2026-06-29: 932→1,929 في 6 مواقع (abstract، intro، §5.1، results table، conclusion×2). + 12 test module جديد في §5.1.
+- [x] (AATIF) ✅ **تحديث عدد الاختبارات في الورقة** — 2026-06-29: 932→1,929→2,065 في 6 مواقع. + §3.11 جديد بـ9 موديولات (كل واحد مع الفيلد نوت اللي ألهمه). §5.1 محدّث (1,885 فنكشن + 180 parametrized عبر 39 ملف). pdflatex نظيف 25 صفحة.
 - [x] (AATIF) ✅ **خريطة الفيلد نوتس ↔ الكود** — 2026-06-29: `design/FIELD_NOTE_CODE_MAP_FULL.md` (740 سطر). 82 فيلد نوت اتراجعت: 19 مكتمل، 33 جزئي، 20 مش موجود، 10 فلسفي. 4 فجوات حرجة: المُحاجج، المُراجع، طبقة "لكن"، التعليل الذاتي.
 - [ ] (AATIF) **تحضير تقديم ARR** — EACL 2027 deadline August 3
 
@@ -92,7 +110,22 @@ Last updated: 2026-06-29 by Cowork session (✅ المراحل الثلاث كا
 - (2026-06-27) Embedding fine-tuning هو الحل الصحيح للهجات (مش مراسي أكثر ومش LLM في البايبلاين)
 - (2026-06-28) "بموت فيك" هي المصرية الصحيحة (مش "هموت فيك") — commit 6aff76f
 
-## Decisions Made This Session (2026-06-29)
+## Decisions Made This Session (2026-06-30)
+- (2026-06-30) **مراجعة خارجية 3 موديلات**: إجماع على إعادة ترتيب — FN#058 و FN#070 أعلى، FN#072 أنزل
+- (2026-06-30) **أضعف نقطة — إجماع**: Evaluation credibility (56 held-out مش كافي، ما في baselines، ما في ablation)
+- (2026-06-30) **قدرة ناقصة — إجماع**: Uncertainty/Calibration (النظام يحتاج يعرف لما مش متأكد)
+- (2026-06-30) **ChatGPT framing**: "transparent rule-calibrated semantic safety layer" مش "governance equation" — لازم الورقة تكون صادقة
+- (2026-06-30) **DeepSeek response**: low quality — Instant mode ما قرأ التفاصيل
+
+### Philosophical Review Findings (2026-06-30)
+- الفجوة الحقيقية: الفلسفة → القياس (مش الفلسفة → الكود)
+- S = بوابة تنفيذ فقط، مش النظام كله
+- Uncertainty = تناقض فلسفي (AATIF يقول لا تجزم، لكن يطلع 0.81 كحقيقة)
+- الخيط المركزي: "لا تحاكم الإنسان من ظاهر النص وحده"
+- FN#070 = تطوير فلسفي مش بس feature
+- الورقة لازم تبدأ من "الحوكمة قبل الحساب"
+
+## Decisions Made Previous Session (2026-06-29)
 - (2026-06-29) **ثغرة fallback bypass**: pipeline_connector يتجاوز C4 — الدومين يقرر الإصلاح (SAFE_STOP لمخاطر عالية، regex+تنبيه لعام)
 - (2026-06-29) **فجوة التصميم-الكود**: 34 وثيقة تصميم ما فيها أرقام/معادلات/آليات — "الدستور ما يحكم الأرقام"
 - (2026-06-29) **الثوابت الأخلاقية**: صفحة دستورية مقترحة — المعماري يقرر المحتوى
