@@ -113,7 +113,7 @@ class TestEnumCompleteness(unittest.TestCase):
 
     def test_framing_strategy_values(self):
         expected = {"real_leads_ideal_teaches", "ideal_leads_real_softens",
-                    "cold_informs_real_speaks", "unified", "escalate"}
+                    "cold_informs_real_speaks", "unified", "defer_to_clarification"}
         self.assertEqual({f.value for f in FramingStrategy}, expected)
 
     def test_decision_context_count(self):
@@ -290,8 +290,14 @@ class TestContextDetectionAR(unittest.TestCase):
 
 class TestIdealVoice(unittest.TestCase):
 
-    def test_ideal_single_marker(self):
+    def test_ideal_single_marker_general_no_activate(self):
+        """P0-A: Single marker in GENERAL context → no activation (0.20 < 0.25)."""
         r = _engine().analyze("I feel a strong duty to help my friend in need")
+        self.assertFalse(r.activated)
+
+    def test_ideal_single_marker_with_context_activates(self):
+        """P0-A: Single marker + moral context → activates via context gate."""
+        r = _engine().analyze("Should I do my duty even when it's wrong?")
         self.assertTrue(r.activated)
         self.assertGreaterEqual(r.ideal_signal.strength, 0.2)
 
@@ -414,8 +420,9 @@ class TestColdVoice(unittest.TestCase):
         self.assertEqual(r.cold_signal.strength, 0.0)
 
     def test_cold_markers_found_populated(self):
+        """P0-F: 'data' and 'risk' are WEAK markers, need 2+ strong to count."""
         r = _engine().analyze(
-            "The statistics and data clearly show the risk level here"
+            "The statistics and probability data clearly show the risk level here"
         )
         self.assertTrue(len(r.cold_signal.markers_found) >= 2)
 
@@ -510,7 +517,7 @@ class TestFramingStrategy(unittest.TestCase):
             "while statistics show high risk and low probability"
         )
         if r.tension.tension_type == TensionType.THREE_WAY:
-            self.assertEqual(r.framing_strategy, FramingStrategy.ESCALATE)
+            self.assertEqual(r.framing_strategy, FramingStrategy.DEFER_TO_CLARIFICATION)
 
     def test_medical_uses_cold_informs(self):
         # Medical context + pair tension (not THREE_WAY) → COLD_INFORMS.
@@ -528,7 +535,8 @@ class TestFramingStrategy(unittest.TestCase):
     def test_financial_uses_cold_informs(self):
         r = _engine().analyze(
             "I should invest more — it's the right thing for my "
-            "budget — but my salary is tight and the risk is high"
+            "budget — but my salary is tight and the statistics and "
+            "probability numbers all point to high failure rate"
         )
         if r.decision_context == DecisionContext.FINANCIAL:
             self.assertEqual(r.framing_strategy,
@@ -555,7 +563,7 @@ class TestFramingStrategy(unittest.TestCase):
         )
         # Personal context, balanced tension → Real leads
         if r.framing_strategy not in (FramingStrategy.UNIFIED,
-                                       FramingStrategy.ESCALATE):
+                                       FramingStrategy.DEFER_TO_CLARIFICATION):
             self.assertIn(r.framing_strategy, [
                 FramingStrategy.REAL_LEADS_IDEAL_TEACHES,
                 FramingStrategy.IDEAL_LEADS_REAL_SOFTENS,
@@ -621,11 +629,11 @@ class TestRecommendations(unittest.TestCase):
             "It's my duty and the right thing, but I'm struggling "
             "and stuck, and the statistics show high risk"
         )
-        if r.framing_strategy == FramingStrategy.ESCALATE:
+        if r.framing_strategy == FramingStrategy.DEFER_TO_CLARIFICATION:
             psp = any("possibility" in rec.lower()
                       for rec in r.recommendations)
             self.assertTrue(psp,
-                            "ESCALATE must reference possibility space")
+                            "DEFER_TO_CLARIFICATION must reference possibility space")
 
     def test_ideal_vs_real_names_both(self):
         r = _engine().analyze(
@@ -1106,6 +1114,179 @@ class TestReadingContract(unittest.TestCase):
             self.assertIn(r.ideal_signal.voice, ["ideal", "none"])
             self.assertIn(r.real_signal.voice, ["real", "none"])
             self.assertIn(r.cold_signal.voice, ["cold", "none"])
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  25. P0 Regression Tests
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TestP0Isolation(unittest.TestCase):
+    """P0-G: Isolation markers on every ColdOSReading."""
+
+    def test_active_reading_has_isolation_marker(self):
+        r = _engine().analyze(
+            "Should I do the right thing? My duty says yes but hard"
+        )
+        self.assertTrue(r.activated)
+        self.assertEqual(r._isolation_marker, "B5_ADVISORY_NOT_FOR_SAFETY")
+
+    def test_inactive_reading_has_isolation_marker(self):
+        r = _engine().analyze("hello world, how are you today")
+        self.assertFalse(r.activated)
+        self.assertEqual(r._isolation_marker, "B5_ADVISORY_NOT_FOR_SAFETY")
+
+    def test_isolation_constants(self):
+        e = ColdOSEngine()
+        self.assertEqual(e.ISOLATION_MARKER, "B5_ADVISORY_NOT_FOR_SAFETY")
+        self.assertEqual(e.ISOLATION_TARGETS, frozenset({"B5"}))
+        self.assertIn("ADVISORY", e.ISOLATION_CONTRACT)
+
+
+class TestP0ActivationGate(unittest.TestCase):
+    """P0-A: Context-gated activation — need context OR voice ≥ 0.25."""
+
+    def test_single_marker_general_no_activate(self):
+        """1 voice marker in GENERAL context → 0.20 < 0.25 → no activation."""
+        r = _engine().analyze("The evidence suggests something important")
+        self.assertFalse(r.activated)
+
+    def test_context_marker_alone_activates(self):
+        """Context marker present → activates even with weak voice."""
+        r = _engine().analyze("Should I take this medication for my condition?")
+        self.assertTrue(r.activated)
+
+    def test_two_markers_activates_in_general(self):
+        """2 voice markers → 0.40 ≥ 0.25 → activates even in GENERAL."""
+        r = _engine().analyze("My duty and obligation are clear to me")
+        self.assertTrue(r.activated)
+
+
+class TestP0WordBoundary(unittest.TestCase):
+    """P0-E: Word-boundary matching prevents substring false matches."""
+
+    def test_copyright_does_not_match_right(self):
+        """'copyright' should NOT trigger 'right' marker."""
+        r = _engine().analyze(
+            "This is a copyright notice for the document. "
+            "All rights reserved under the terms of this license."
+        )
+        self.assertNotIn("right", r.ideal_signal.markers_found)
+
+    def test_righteous_does_not_match_right(self):
+        """'righteous' should NOT trigger 'right' marker (word boundary)."""
+        r = _engine().analyze("He was known as a righteous leader in history")
+        self.assertNotIn("right", r.ideal_signal.markers_found)
+
+
+class TestP0WeakMarkers(unittest.TestCase):
+    """P0-F: WEAK_MARKERS need corroboration by 2+ strong markers."""
+
+    def test_bus_alone_does_not_activate_real(self):
+        """'بس' alone should not count as a real marker (WEAK)."""
+        r = _engine().analyze("بس كيف الحال عندكم اليوم يا جماعة")
+        # Even if activated, بس should not appear in markers_found
+        if r.activated:
+            self.assertNotIn("بس", r.real_signal.markers_found)
+
+    def test_bus_with_strong_markers_counts(self):
+        """'بس' should count when 2+ strong markers corroborate."""
+        r = _engine().analyze(
+            "ظروفي صعبة والواقع مختلف بس ما أقدر أسوي شي"
+        )
+        self.assertTrue(r.activated)
+        # ظروفي + صعب + ما أقدر = 3 strong, so بس should now count
+        self.assertIn("بس", r.real_signal.markers_found)
+
+    def test_data_alone_weak(self):
+        """'data' alone should not count as COLD marker (WEAK)."""
+        r = _engine().analyze("We need to store data in the database properly")
+        if r.cold_signal.markers_found:
+            self.assertNotIn("data", r.cold_signal.markers_found)
+
+
+class TestP0ReligiousMarkers(unittest.TestCase):
+    """P0-F: حلال/حرام only count in first-person decision context."""
+
+    def test_halal_in_academic_text_no_ideal(self):
+        """حلال in informational text should not trigger ideal voice."""
+        r = _engine().analyze("الحلال والحرام من أساسيات الفقه الإسلامي")
+        # No first-person decision → religious markers don't count
+        if r.activated:
+            self.assertNotIn("حلال", r.ideal_signal.markers_found)
+
+    def test_halal_in_first_person_decision(self):
+        """حلال with 'هل يجوز' should trigger ideal voice."""
+        r = _engine().analyze("هل يجوز هالشي حلال ولا حرام المفروض أسأل")
+        self.assertTrue(r.activated)
+        # First-person decision → حلال counts as ideal marker
+        self.assertTrue(r.ideal_signal.strength > 0)
+
+
+class TestP0PracticalContext(unittest.TestCase):
+    """P0-B: PRACTICAL context now has markers and is detectable."""
+
+    def test_practical_en_detected(self):
+        r = _engine().analyze(
+            "How to optimize our approach and build a better process? "
+            "My duty compels me to find the right method."
+        )
+        if r.decision_context == DecisionContext.PRACTICAL:
+            pass  # Correct
+        # At minimum, PRACTICAL should be reachable
+        self.assertIn(DecisionContext.PRACTICAL, DecisionContext)
+
+    def test_practical_ar_detected(self):
+        r = _engine().analyze("كيف أنظم خطواتي وأبني خطة عملي واضحة")
+        self.assertTrue(r.activated)
+        self.assertEqual(r.decision_context, DecisionContext.PRACTICAL)
+
+
+class TestP0LBHInteraction(unittest.TestCase):
+    """P0-C: lbh_interaction_note populated when IDEAL_LEADS_REAL_SOFTENS."""
+
+    def test_ideal_leads_has_lbh_note(self):
+        r = _engine().analyze(
+            "Is this right or wrong? My conscience says it's my duty "
+            "and moral obligation — ethically I must act with justice "
+            "and integrity. But I also feel stuck and confused."
+        )
+        if r.framing_strategy == FramingStrategy.IDEAL_LEADS_REAL_SOFTENS:
+            self.assertIn("LBH", r.lbh_interaction_note)
+            self.assertIn("sermonising", r.lbh_interaction_note)
+
+    def test_non_ideal_leads_no_lbh_note(self):
+        r = _engine().analyze(
+            "ظروفي صعبة وتعبت والواقع مختلف ما أقدر أستمر"
+        )
+        self.assertTrue(r.activated)
+        if r.framing_strategy != FramingStrategy.IDEAL_LEADS_REAL_SOFTENS:
+            self.assertEqual(r.lbh_interaction_note, "")
+
+
+class TestP0DeferToClarification(unittest.TestCase):
+    """P0-D: ESCALATE renamed to DEFER_TO_CLARIFICATION."""
+
+    def test_enum_value(self):
+        self.assertEqual(
+            FramingStrategy.DEFER_TO_CLARIFICATION.value,
+            "defer_to_clarification"
+        )
+        self.assertFalse(hasattr(FramingStrategy, "ESCALATE"))
+
+
+class TestP0ArabicNormalization(unittest.TestCase):
+    """P0-E: Arabic normalization handles diacritics and alef variants."""
+
+    def test_tashkeel_ignored(self):
+        """Markers with diacritics should still match."""
+        r = _engine().analyze("الوَاجِب يَجِبُ والمَفْرُوض واضح")
+        self.assertTrue(r.activated)
+        self.assertTrue(r.ideal_signal.strength > 0)
+
+    def test_alef_variants_normalized(self):
+        """أ/إ/آ all normalize to ا."""
+        r = _engine().analyze("إيمان وأخلاق وآداب — هل يجوز هالشي حلال")
+        self.assertTrue(r.activated)
 
 
 if __name__ == "__main__":

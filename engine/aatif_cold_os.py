@@ -41,6 +41,8 @@ License: BSL-1.1 (code) | CC BY 4.0 (field note)
 from __future__ import annotations
 
 import hashlib
+import re
+import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 from typing import List, Tuple
@@ -76,7 +78,7 @@ class FramingStrategy(Enum):
     IDEAL_LEADS_REAL_SOFTENS = "ideal_leads_real_softens"
     COLD_INFORMS_REAL_SPEAKS = "cold_informs_real_speaks"
     UNIFIED                  = "unified"
-    ESCALATE                 = "escalate"
+    DEFER_TO_CLARIFICATION   = "defer_to_clarification"
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -111,6 +113,8 @@ class ColdOSReading:
     recommendations: Tuple[str, ...]
     evidence: Tuple[str, ...]
     activated: bool               # False ⇒ fast-path skip
+    _isolation_marker: str = "B5_ADVISORY_NOT_FOR_SAFETY"
+    lbh_interaction_note: str = ""  # P0-C: warns when strategy may conflict with LBH
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -213,14 +217,116 @@ CONTEXT_FINANCIAL_AR: frozenset = frozenset({
     "ربح", "خسارة",
 })
 
+# ── Practical decision context (P0-B: was unreachable) ───────
+CONTEXT_PRACTICAL_EN: frozenset = frozenset({
+    "how to", "steps", "plan", "method", "strategy",
+    "approach", "way to", "solution", "fix", "optimize",
+    "schedule", "organize", "manage", "process", "build",
+})
+CONTEXT_PRACTICAL_AR: frozenset = frozenset({
+    "كيف", "خطوات", "طريقة", "حل", "خطة",
+    "عملي", "أنظم", "أرتب", "أحسن", "أبني",
+})
+
 # All context-marker pairs for iteration
 _CONTEXT_MARKER_MAP = {
     DecisionContext.MORAL:     (CONTEXT_MORAL_EN,     CONTEXT_MORAL_AR),
     DecisionContext.PERSONAL:  (CONTEXT_PERSONAL_EN,  CONTEXT_PERSONAL_AR),
+    DecisionContext.PRACTICAL: (CONTEXT_PRACTICAL_EN, CONTEXT_PRACTICAL_AR),
     DecisionContext.MEDICAL:   (CONTEXT_MEDICAL_EN,   CONTEXT_MEDICAL_AR),
     DecisionContext.SPIRITUAL: (CONTEXT_SPIRITUAL_EN, CONTEXT_SPIRITUAL_AR),
     DecisionContext.FINANCIAL: (CONTEXT_FINANCIAL_EN, CONTEXT_FINANCIAL_AR),
 }
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Arabic Normalization (P0-E/F)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _normalize_arabic(text: str) -> str:
+    """Normalize Arabic text: strip diacritics, normalize alef, strip tatweel."""
+    # Strip tashkeel (diacritics)
+    result = unicodedata.normalize("NFD", text)
+    result = "".join(
+        c for c in result
+        if unicodedata.category(c) != "Mn"  # non-spacing marks = diacritics
+    )
+    # Normalize alef variants: أ إ آ → ا
+    result = result.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا")
+    # Strip tatweel
+    result = result.replace("ـ", "")
+    return result
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Word-Boundary Matching (P0-E)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def _compile_en_patterns(markers: frozenset) -> list:
+    """Pre-compile English markers with word boundaries."""
+    return [re.compile(r"\b" + re.escape(m) + r"\b", re.IGNORECASE) for m in markers]
+
+
+def _match_en_markers(text: str, patterns: list, markers: frozenset) -> list:
+    """Match English markers with word-boundary regex."""
+    found = []
+    markers_list = sorted(markers)
+    for pattern, marker in zip(patterns, markers_list):
+        if pattern.search(text):
+            found.append(marker)
+    return found
+
+
+def _match_ar_markers(text: str, markers: frozenset) -> list:
+    """Match Arabic markers allowing common Arabic affixes.
+
+    Arabic has prefixes (ال، و، ب، ف، ك، ل) and suffixes (ي، ك، ه، ها، هم، نا، كم).
+    Instead of strict word boundaries, we match the marker as a STEM:
+    preceded by start-of-string, space/punctuation, or a known prefix;
+    followed by end-of-string, space/punctuation, or a known suffix.
+    """
+    found = []
+    # Common prefixes (1-2 chars) and suffixes that attach to Arabic words
+    _PREFIX = r"(?:^|[\s،؛؟।.,!?])(?:ال|و|وال|بال|فال|ف|ب|ك|ل|لل)?"
+    _SUFFIX = r"(?:ي|ك|ه|ها|هم|هن|نا|كم|كن|ين|ون|ات|ة|تي|ته|تها)?"
+    _END    = r"(?:$|[\s،؛؟।.,!?])"
+    for m in markers:
+        pattern = _PREFIX + re.escape(m) + _SUFFIX + _END
+        if re.search(pattern, text):
+            found.append(m)
+    return found
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Marker Strength Categories (P0-F)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Weak markers: common words that need corroboration (2+ other markers)
+WEAK_MARKERS: frozenset = frozenset({
+    "بس",          # very common Arabic filler meaning "but"/"just"
+    "data",        # extremely common in non-ethical contexts
+    "risk",        # common in non-ethical contexts
+    "rate",        # common in non-ethical contexts
+    "trying",      # very common
+    "honestly",    # very common
+})
+
+# Religious terms: only activate as voice markers in first-person decision context
+RELIGIOUS_MARKERS: frozenset = frozenset({
+    "حلال", "حرام",
+})
+
+# First-person decision phrases that make religious terms relevant
+_FIRST_PERSON_DECISION_AR: frozenset = frozenset({
+    "هل يجوز", "يجوز لي", "أقدر أسوي", "ممكن أسوي",
+    "المفروض أسوي", "حكم", "ينفع",
+})
+
+
+# Pre-compile English word-boundary patterns
+_IDEAL_EN_PATTERNS = _compile_en_patterns(IDEAL_MARKERS_EN)
+_REAL_EN_PATTERNS  = _compile_en_patterns(REAL_MARKERS_EN)
+_COLD_EN_PATTERNS  = _compile_en_patterns(COLD_MARKERS_EN)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -249,9 +355,19 @@ class ColdOSEngine:
     # ── Feature Flag ──────────────────────────────────────────
     ENABLED = True
 
+    # ── Isolation Contract (P0-G) ─────────────────────────────
+    ISOLATION_CONTRACT = """
+    ColdOSEngine produces ADVISORY framing recommendations only.
+    It NEVER modifies H, θ, or S.  It NEVER blocks runtime.
+    Its output feeds B5 (Behaviour) channel exclusively.
+    The S equation is the sole safety authority (Single-Mind Law).
+    """
+    ISOLATION_MARKER  = "B5_ADVISORY_NOT_FOR_SAFETY"
+    ISOLATION_TARGETS = frozenset({"B5"})
+
     # ── Sparse Activation ─────────────────────────────────────
-    _MIN_TEXT_LENGTH      = 15
-    _ACTIVATION_THRESHOLD = 0.15   # ≥1 voice must reach this
+    _MIN_TEXT_LENGTH      = 15     # CALIBRATION_NEEDED
+    _ACTIVATION_THRESHOLD = 0.25   # P0-A: raised from 0.15 (1 marker=0.20 < 0.25, no auto-activate)
 
     # ──────────────────────────────────────────────────────────
     #  Public API
@@ -274,22 +390,22 @@ class ColdOSEngine:
         if not self.ENABLED or not text or len(text.strip()) < self._MIN_TEXT_LENGTH:
             return self._inactive_reading()
 
-        lower = text.lower()
+        # 1. Decision context (P0-E: word-boundary matching)
+        context = self._detect_context(text)
 
-        # 1. Decision context
-        context = self._detect_context(lower)
-
-        # 2. Voice signals
-        ideal = self._measure_voice("ideal", lower,
+        # 2. Voice signals (P0-E: word-boundary, P0-F: strong/weak split)
+        ideal = self._measure_voice("ideal", text,
                                     IDEAL_MARKERS_EN, IDEAL_MARKERS_AR)
-        real  = self._measure_voice("real",  lower,
+        real  = self._measure_voice("real",  text,
                                     REAL_MARKERS_EN,  REAL_MARKERS_AR)
-        cold  = self._measure_voice("cold",  lower,
+        cold  = self._measure_voice("cold",  text,
                                     COLD_MARKERS_EN,  COLD_MARKERS_AR)
 
-        # Sparse activation gate
+        # P0-A: Context-gated activation — require BOTH context AND voice evidence
         max_strength = max(ideal.strength, real.strength, cold.strength)
-        if context == DecisionContext.GENERAL and max_strength < self._ACTIVATION_THRESHOLD:
+        has_context = context != DecisionContext.GENERAL
+        has_voice   = max_strength >= self._ACTIVATION_THRESHOLD
+        if not has_context and not has_voice:
             return self._inactive_reading()
 
         # 3. Tension
@@ -308,6 +424,15 @@ class ColdOSEngine:
         # 6. Evidence trail
         evidence = self._compile_evidence(context, ideal, real, cold, tension)
 
+        # 7. P0-C: LBH interaction note
+        lbh_note = ""
+        if strategy == FramingStrategy.IDEAL_LEADS_REAL_SOFTENS:
+            lbh_note = (
+                "COLD-OS chose IDEAL_LEADS_REAL_SOFTENS. If LBH detects "
+                "sermonising patterns in the resulting draft, this is a "
+                "known tension — prioritise LBH feedback in B5 channel."
+            )
+
         return ColdOSReading(
             decision_context=context,
             ideal_signal=ideal,
@@ -318,19 +443,28 @@ class ColdOSEngine:
             recommendations=tuple(recommendations),
             evidence=tuple(evidence),
             activated=True,
+            _isolation_marker=self.ISOLATION_MARKER,
+            lbh_interaction_note=lbh_note,
         )
 
     # ──────────────────────────────────────────────────────────
     #  Context Detection
     # ──────────────────────────────────────────────────────────
 
-    def _detect_context(self, lower: str) -> DecisionContext:
-        """Classify the decision type from linguistic markers."""
+    def _detect_context(self, text: str) -> DecisionContext:
+        """Classify the decision type from linguistic markers (P0-E: word-boundary)."""
+        lower = text.lower()
+        normalized = _normalize_arabic(text)
         scores: dict[DecisionContext, int] = {}
 
         for ctx, (en_markers, ar_markers) in _CONTEXT_MARKER_MAP.items():
-            count = sum(1 for m in en_markers if m in lower)
-            count += sum(1 for m in ar_markers if m in lower)
+            # English: word-boundary regex
+            count = sum(
+                1 for m in en_markers
+                if re.search(r"\b" + re.escape(m) + r"\b", lower, re.IGNORECASE)
+            )
+            # Arabic: space/punctuation boundary on normalized text
+            count += len(_match_ar_markers(normalized, ar_markers))
             if count > 0:
                 scores[ctx] = count
 
@@ -346,22 +480,52 @@ class ColdOSEngine:
     def _measure_voice(
         self,
         voice_name: str,
-        lower: str,
+        text: str,
         en_markers: frozenset,
         ar_markers: frozenset,
     ) -> VoiceSignal:
-        """Measure strength of a voice from marker presence."""
-        found: list[str] = []
+        """Measure strength of a voice from marker presence.
 
+        P0-E: Uses word-boundary matching instead of substring.
+        P0-F: Discounts WEAK_MARKERS unless corroborated by 2+ strong markers.
+               RELIGIOUS_MARKERS only count in first-person decision context.
+        """
+        lower = text.lower()
+        normalized = _normalize_arabic(text)
+
+        # English: word-boundary regex
+        en_found: list[str] = []
         for m in en_markers:
-            if m in lower:
-                found.append(m)
-        for m in ar_markers:
-            if m in lower:
-                found.append(m)
+            if re.search(r"\b" + re.escape(m) + r"\b", lower, re.IGNORECASE):
+                en_found.append(m)
+
+        # Arabic: space/punctuation boundary on normalized text
+        ar_found = _match_ar_markers(normalized, ar_markers)
+
+        all_found = en_found + ar_found
+
+        # ── P0-F: Split into STRONG and WEAK ──
+        strong = [m for m in all_found if m not in WEAK_MARKERS and m not in RELIGIOUS_MARKERS]
+        weak   = [m for m in all_found if m in WEAK_MARKERS]
+        religious = [m for m in all_found if m in RELIGIOUS_MARKERS]
+
+        # Religious markers only count in first-person decision context
+        has_first_person = any(
+            fp in normalized for fp in _FIRST_PERSON_DECISION_AR
+        )
+        if has_first_person:
+            strong.extend(religious)
+
+        # Weak markers only count if corroborated by ≥2 strong markers
+        if len(strong) >= 2:
+            strong.extend(weak)
+        # else: weak markers are silently dropped
+
+        effective_found = strong
 
         # Diminishing-returns strength curve
-        n = len(found)
+        # CALIBRATION_NEEDED: breakpoints are intuition-based, not empirically calibrated
+        n = len(effective_found)
         if n == 0:
             strength = 0.0
         elif n == 1:
@@ -378,14 +542,14 @@ class ColdOSEngine:
         return VoiceSignal(
             voice=voice_name,
             strength=round(strength, 2),
-            markers_found=tuple(sorted(found)),
+            markers_found=tuple(sorted(effective_found)),
         )
 
     # ──────────────────────────────────────────────────────────
     #  Tension Detection
     # ──────────────────────────────────────────────────────────
 
-    _VOICE_ACTIVE_THRESHOLD = 0.20
+    _VOICE_ACTIVE_THRESHOLD = 0.20  # CALIBRATION_NEEDED
 
     def _detect_tension(
         self,
@@ -419,27 +583,27 @@ class ColdOSEngine:
                 )
             return TensionReading(
                 tension_type=TensionType.THREE_WAY,
-                tension_level=round(min(1.0, spread + 0.3), 2),
+                tension_level=round(min(1.0, spread + 0.3), 2),  # CALIBRATION_NEEDED: 0.3 offset
                 description="Three-way tension — significant spread.",
             )
 
         # Exactly two active — identify the pair
         if ideal_on and real_on:
-            lvl = round(min(1.0, abs(ideal.strength - real.strength) + 0.3), 2)
+            lvl = round(min(1.0, abs(ideal.strength - real.strength) + 0.3), 2)  # CALIBRATION_NEEDED: 0.3 offset
             return TensionReading(
                 tension_type=TensionType.IDEAL_VS_REAL,
                 tension_level=lvl,
                 description="Ideal vs Real — principle conflicts with circumstances.",
             )
         if ideal_on and cold_on:
-            lvl = round(min(1.0, abs(ideal.strength - cold.strength) + 0.3), 2)
+            lvl = round(min(1.0, abs(ideal.strength - cold.strength) + 0.3), 2)  # CALIBRATION_NEEDED: 0.3 offset
             return TensionReading(
                 tension_type=TensionType.IDEAL_VS_COLD,
                 tension_level=lvl,
                 description="Ideal vs COLD — principle conflicts with data.",
             )
         # real_on and cold_on
-        lvl = round(min(1.0, abs(real.strength - cold.strength) + 0.3), 2)
+        lvl = round(min(1.0, abs(real.strength - cold.strength) + 0.3), 2)  # CALIBRATION_NEEDED: 0.3 offset
         return TensionReading(
             tension_type=TensionType.REAL_VS_COLD,
             tension_level=lvl,
@@ -464,7 +628,7 @@ class ColdOSEngine:
             return FramingStrategy.UNIFIED
 
         if tension.tension_type == TensionType.THREE_WAY:
-            return FramingStrategy.ESCALATE
+            return FramingStrategy.DEFER_TO_CLARIFICATION
 
         # Context-sensitive overrides
         if context in (DecisionContext.MEDICAL, DecisionContext.FINANCIAL):
@@ -484,7 +648,7 @@ class ColdOSEngine:
         if strongest_name == "cold":
             return FramingStrategy.COLD_INFORMS_REAL_SPEAKS
 
-        if strongest_name == "ideal" and ideal.strength > real.strength + 0.15:
+        if strongest_name == "ideal" and ideal.strength > real.strength + 0.15:  # CALIBRATION_NEEDED: 0.15 dominance gap
             return FramingStrategy.IDEAL_LEADS_REAL_SOFTENS
 
         # Default: mercy speaks
@@ -527,10 +691,10 @@ class ColdOSEngine:
                 "Use COLD data to inform — contextualise, "
                 "don't dump raw numbers.",
             ],
-            FramingStrategy.ESCALATE: [
+            FramingStrategy.DEFER_TO_CLARIFICATION: [
                 "Three-way tension — respond with extra care.",
                 "Present multiple perspectives; let the human decide.",
-                "Preserve the possibility space (FN#070).",
+                "Preserve the possibility space; hold options open.",
             ],
         }
         recs.extend(_STRAT_RECS.get(strategy, []))
@@ -612,6 +776,8 @@ class ColdOSEngine:
             recommendations=(),
             evidence=(),
             activated=False,
+            _isolation_marker=self.ISOLATION_MARKER,
+            lbh_interaction_note="",
         )
 
     # ──────────────────────────────────────────────────────────
