@@ -17,7 +17,7 @@ Critical Design Rule (Single Mind):
   bounded dual-root signal reconstruction for safer response shaping after
   the governance equation has already made its decision.
 
-  7 Invariants:
+  9 Invariants:
     1. S-decision immutability — never modify S_decision, H, I, E, θ, α
     2. No downgrade — BLOCK→CLARIFY, CLARIFY→EXECUTE prohibited
     3. Boundary preservation — acknowledgment + refusal + alternative
@@ -25,6 +25,8 @@ Critical Design Rule (Single Mind):
     5. Meta-Oversight audit — response_contains_refusal, no clinical labels
     6. False Goodness guard — if FN#049 fires, DRE must not activate
     7. Malicious intent exclusion — deliberate malice → no empathic reconstruction
+    8. Authority Preservation — enrichment must not increase probability of user bypass
+    9. Fiction/Roleplay exclusion — fiction context → DRE does not activate
 
 Clinical Boundary:
   "No Diagnosis, No Treatment, No Root-Certainty."
@@ -44,6 +46,7 @@ Co-builder: Claude (Anthropic)
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
@@ -79,8 +82,8 @@ WEAK_DISTRESS_THRESHOLD = 2     # ≥2 weak markers
 # Stage 3: Malicious intent exclusion
 MALICIOUS_INTENT_THRESHOLD = 0.70
 
-# Cross-causal confidence
-CROSS_CAUSAL_MIN_EVIDENCE = 1
+# Co-occurrence confidence
+CO_OCCURRENCE_MIN_EVIDENCE = 1
 
 # Root signal strength ranges
 ROOT_STRONG_SIGNAL_WEIGHT = 0.80
@@ -103,6 +106,8 @@ CLINICAL_PROHIBITED_TERMS = [
     "because of your trauma", "your wound is", "your trauma is causing",
     "صدمة", "صدمه", "اضطراب", "تشخيص", "علاج نفسي", "مرض نفسي",
     "الصدمة اللي عندك", "الصدمة سبب", "عقدة",
+    # Fix 7: مرادفات سريرية إضافية — additional clinical boundary synonyms
+    "استشارة", "دكتور نفسي", "حالة نفسية", "جلسة علاج",
 ]
 
 DEFAULT_PROHIBITED_CLAIMS = [
@@ -124,14 +129,18 @@ DEFAULT_PROHIBITED_CLAIMS = [
 # Strong distress markers (1 is enough for Stage 2)
 ROOT_A_STRONG_MARKERS_AR = [
     # Category A: قهر / كسر / وجع — dignity-pain
-    "مقهور", "مقهوره", "منكسر", "منكسره", "متوجع", "موجوع",
+    "مقهور", "مقهوره", "مقهورة",
+    "منكسر", "منكسره", "منكسرة",
+    "متوجع", "موجوع",
     "قهرني", "كسرني", "وجعني", "ذبحني", "دمرني",
     # Category D: الصبر نفد / طفح الكيل — emotional threshold exceeded
     "الصبر نفد", "طفح الكيل", "ما عاد اتحمل", "وصلت حدي",
     "ما اقدر اصبر", "بنفجر", "خلاص ما اقدر",
     # Pain intensity
-    "ابغى اموت", "تمنيت الموت", "ودي اختفي", "ما ابغى اعيش",
-    "كرهت حياتي", "ضايق صدري", "مخنوق", "مخنوقه",
+    "ابغى اموت", "ابي اموت", "أبي اموت",  # Fix 3: Gulf variants
+    "تمنيت الموت", "ودي اختفي", "ما ابغى اعيش",
+    "كرهت حياتي", "ضايق صدري",
+    "مخنوق", "مخنوقه", "مخنوقة",
 ]
 
 ROOT_A_STRONG_MARKERS_EN = [
@@ -144,13 +153,20 @@ ROOT_A_STRONG_MARKERS_EN = [
 
 # Weak distress markers (need ≥2 for Stage 2)
 ROOT_A_WEAK_MARKERS_AR = [
-    "تعبان", "تعبانه", "زعلان", "زعلانه", "حزين", "حزينه",
-    "متضايق", "متضايقه", "مجروح", "مجروحه", "مظلوم", "مظلومه",
+    "تعبان", "تعبانه", "تعبانة",
+    "زعلان", "زعلانه", "زعلانة",
+    "حزين", "حزينه", "حزينة",
+    "متضايق", "متضايقه", "مجروح", "مجروحه",
+    "مظلوم", "مظلومه", "مظلومة",
     "مهان", "مهانه", "ذليل", "ذليله", "مكسور", "متألم", "متألمه",
-    "مهموم", "مهمومه", "قلقان", "قلقانه", "خايف", "خايفه",
+    "مهموم", "مهمومه", "قلقان", "قلقانه",
+    "خايف", "خايفه", "خايفة",
     "محروق", "محبط", "محبطه", "يائس", "يائسه",
     # Category C (as Root A): كرامة / إهانة / ذل — honor/dignity-pain context
     "كرامتي", "إهانة", "اهانه", "ذل", "اذلني", "اذلوني",
+    # Fix 8: عيب/عار — shame as distress signal (both ة and ه forms)
+    "عيب", "عار", "فضيحة علينا", "فضيحه علينا",
+    "يا عيبنا", "حشمة", "حشمه",
 ]
 
 ROOT_A_WEAK_MARKERS_EN = [
@@ -164,20 +180,28 @@ ROOT_A_WEAK_MARKERS_EN = [
 # Root A signal types
 ROOT_A_TYPES = {
     "pain": ["متوجع", "موجوع", "وجعني", "pain", "hurts", "aching", "suffering"],
-    "fear": ["خايف", "خايفه", "اخاف", "أخاف", "scared", "afraid", "terrified", "fear"],
-    "humiliation_pain": ["مقهور", "مقهوره", "منكسر", "منكسره", "مهان", "مهانه",
+    "fear": ["خايف", "خايفه", "خايفة", "اخاف", "أخاف",
+             "scared", "afraid", "terrified", "fear"],
+    "humiliation_pain": ["مقهور", "مقهوره", "مقهورة",
+                         "منكسر", "منكسره", "منكسرة",
+                         "مهان", "مهانه",
                          "اذلني", "اذلوني", "كرامتي", "إهانة", "اهانه", "اهانوني",
                          "humiliated", "degraded", "shamed", "disgraced"],
-    "injustice_pain": ["مظلوم", "مظلومه", "ظلموني", "ظلم", "injustice", "unfair",
+    "injustice_pain": ["مظلوم", "مظلومه", "مظلومة",
+                       "ظلموني", "ظلم", "injustice", "unfair",
                        "wronged", "unjust"],
     "avoidance_loop": ["ما اقدر اواجه", "مش قادر اواجه", "can't face", "avoiding",
                        "i keep running", "can't confront"],
-    "flooding": ["بنفجر", "مخنوق", "مخنوقه", "ضايق صدري",
+    "flooding": ["بنفجر", "مخنوق", "مخنوقه", "مخنوقة", "ضايق صدري",
                  "overwhelmed", "flooding", "can't think straight", "spiraling"],
     "emotional_threshold_exceeded": ["الصبر نفد", "طفح الكيل", "ما عاد اتحمل",
                                      "وصلت حدي", "خلاص ما اقدر",
                                      "at my limit", "breaking point",
                                      "i can't take it anymore", "reached my limit"],
+    # Fix 8: عيب/عار — shame as distress driver
+    # Note: include both ة and ه forms for normalize_arabic compat
+    "shame_pain": ["عيب", "عار", "فضيحة علينا", "فضيحه علينا",
+                   "يا عيبنا", "حشمة", "حشمه"],
 }
 
 
@@ -207,6 +231,10 @@ ROOT_B_MARKERS_AR = [
     "بسوي فيه زي ما سوى", "بعامله زي ما عاملني",
     # Category C (as Root B): كرامة / إهانة — honor-retaliation context
     "رد كرامتي", "استرجع كرامتي", "اهينه زي ما اهانني",
+    # Fix 8: عيب/عار — defiance against shame (both hamza and no-hamza forms)
+    "بس ما أقدر أوقف", "بس ما اقدر اوقف",
+    "أعرف عيب بس", "اعرف عيب بس",
+    "مش قادر أوقف", "مش قادر اوقف",
 ]
 
 ROOT_B_MARKERS_EN = [
@@ -233,6 +261,8 @@ ROOT_B_MARKERS_EN = [
     # Justification / normalization
     "he had it coming", "she asked for it", "they brought it on themselves",
     "i have the right to", "justified in", "anyone would do the same",
+    # Fix 8: shame defiance (English)
+    "I know it's wrong but",
 ]
 
 # Root B signal types
@@ -262,11 +292,32 @@ ROOT_B_TYPES = {
                                       "بسوي فيه زي ما سوى",
                                       "eye for an eye", "taste of his own medicine",
                                       "do to him what he did"],
+    # Fix 8: عيب/عار — shame and social defiance
+    # Note: markers stored in normalized form (no hamza) for normalize_arabic compat
+    "shame_defiance": ["بس ما اقدر اوقف", "اعرف عيب بس", "مش قادر اوقف",
+                       "i know it's wrong but"],
 }
+
+# Fix 8: عيب/عار — shame and social defiance category (9th Arabic-specific)
+ROOT_A_SHAME_MARKERS_AR = [
+    "عيب", "عار", "فضيحة علينا", "فضيحه علينا",
+    "يا عيبنا", "حشمة", "حشمه",
+]
+
+ROOT_B_SHAME_DEFIANCE_MARKERS_AR = [
+    "بس ما أقدر أوقف", "بس ما اقدر اوقف",
+    "أعرف عيب بس", "اعرف عيب بس",
+    "مش قادر أوقف", "مش قادر اوقف",
+]
+
+ROOT_B_SHAME_DEFIANCE_MARKERS_EN = [
+    "I know it's wrong but",
+]
 
 # Ethical drift phrases that need a target to count
 ETHICAL_DRIFT_PHRASES_AR = [
     "ابغى اضربه", "أبغى أضربه", "ابغى اذبحه", "ابغى اقتله",
+    "ابي اضربه", "أبي أضربه", "ابي اذبحه", "ابي اقتله",  # Fix 3: Gulf variants
     "بكسره", "بدمره", "بخرب عليه", "بأذيه",
 ]
 
@@ -288,41 +339,46 @@ HARM_TARGET_MARKERS = [
 
 
 # ═══════════════════════════════════════════════════════════════
-#  Cross-causal markers — evidence-bounded direction signals
+#  Co-occurrence markers — evidence-bounded direction signals
+#  (Fix 1: renamed from cross-causal; direction is observational,
+#   not a causal claim)
 # ═══════════════════════════════════════════════════════════════
 
-CROSS_CAUSAL_A_FEEDS_B_AR = [
+CO_OCCURRENCE_A_PRECEDES_B_AR = [
     "من كثر", "من شدة", "عشان", "لأنه", "لانه", "بسبب",
     "من الألم", "من القهر", "من الظلم", "الوجع خلاني",
     "الألم خلاني", "من كثر ما تألمت",
 ]
 
-CROSS_CAUSAL_A_FEEDS_B_EN = [
+CO_OCCURRENCE_A_PRECEDES_B_EN = [
     "because of the pain", "the pain made me", "the hurt drove me",
     "out of pain", "out of anger", "suffering made me",
     "because i was hurt", "because i suffered", "the humiliation led me",
     "the injustice pushed me",
 ]
 
-CROSS_CAUSAL_B_FEEDS_A_AR = [
+CO_OCCURRENCE_B_PRECEDES_A_AR = [
     "ندمت", "ندمان", "احس بذنب", "أحس بذنب", "تأنيب ضمير",
     "عذاب ضمير", "ضميري يأنبني", "الانتقام ما ارتحت",
 ]
 
-CROSS_CAUSAL_B_FEEDS_A_EN = [
+CO_OCCURRENCE_B_PRECEDES_A_EN = [
     "i feel guilty", "my conscience", "regretting", "i regret",
     "revenge didn't help", "it made me feel worse",
     "the guilt is eating me", "i can't live with what i did",
 ]
 
-# Allowed cross-causal values
-CROSS_CAUSAL_VALUES = {
-    "explicit_a_feeds_b",
-    "explicit_b_feeds_a",
+# Allowed co-occurrence values (Fix 1: renamed enum values)
+CO_OCCURRENCE_VALUES = {
+    "a_precedes_b",
+    "b_precedes_a",
     "co_present_direction_unclear",
     "independent",
     "none",
 }
+
+# Backward compatibility aliases
+CROSS_CAUSAL_VALUES = CO_OCCURRENCE_VALUES
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -347,6 +403,60 @@ GUIDANCE_TEMPLATES = {
         "Offer non-harmful alternatives that address the underlying need."
     ),
 }
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 5: False Goodness indicators (Invariant 6 implementation)
+# ═══════════════════════════════════════════════════════════════
+
+FALSE_GOODNESS_INDICATORS = [
+    "عادي ما عليك", "مو مشكلة", "it's fine really", "no worries at all",
+    "لا تهتم", "don't worry about it", "it's nothing", "كله تمام",
+    "no problem at all", "i'm totally fine", "مافي شي", "عادي عادي",
+]
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 6: Fiction / roleplay context indicators (Stage 0)
+# ═══════════════════════════════════════════════════════════════
+
+FICTION_ROLEPLAY_INDICATORS = [
+    # Arabic (both ة and ه forms for normalize_arabic compatibility)
+    "قصة", "قصه", "رواية", "روايه", "مسرحية", "مسرحيه",
+    "فيلم", "مسلسل", "شخصية", "شخصيه",
+    # English
+    "fiction", "story", "screenplay", "roleplay", "character",
+    "novel", "imagine", "pretend", "let's say",
+]
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 9: Authority Preservation — max enrichment sentences by S_decision
+# ═══════════════════════════════════════════════════════════════
+
+MAX_ENRICHMENT_SENTENCES = {
+    "BLOCK": 2,
+    "BLOCK_SOFT": 3,
+    "CLARIFY": 5,
+    "EXECUTE_WITH_CAUTION": 0,  # 0 = unlimited
+}
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 4: Negation prefixes — negated markers should not trigger distress
+# ═══════════════════════════════════════════════════════════════
+
+NEGATION_PREFIXES = ["ما", "لا", "مش", "ماني", "مو"]
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 10: Causal language terms (Invariant 4 enforcement)
+# ═══════════════════════════════════════════════════════════════
+
+CAUSAL_LANGUAGE_TERMS = [
+    "feeds", "causes", "leads to", "because of",
+    "يسبب", "يؤدي إلى", "بسبب أن",
+]
+
 
 GUIDANCE_ARABIC_TEMPLATES = {
     "violence": (
@@ -405,9 +515,9 @@ class DualRootAnalysis:
     dual_root_pattern_detected: bool = False
     pattern_confidence: float = 0.0
 
-    # Cross-causal — evidence-bounded only
-    cross_causal: str = "none"
-    cross_causal_evidence: List[str] = field(default_factory=list)
+    # Co-occurrence — evidence-bounded only (Fix 1: renamed from cross_causal)
+    co_occurrence_type: str = "none"
+    co_occurrence_evidence: List[str] = field(default_factory=list)
 
     # POM signal trace — not clinical
     pom_trace: Dict[str, str] = field(default_factory=dict)
@@ -416,6 +526,15 @@ class DualRootAnalysis:
     response_guidance: str = ""
     enrichment_mode: str = ""  # "dual_root", "distress_boundary", "ethical_boundary", ""
     prohibited_claims: List[str] = field(default_factory=list)
+
+    # Fix 5: False Goodness detection
+    false_goodness_flag: bool = False
+
+    # Fix 6: Fiction/roleplay exclusion
+    fiction_or_roleplay_context: bool = False
+
+    # Fix 9: Authority Preservation — max enrichment sentence limit applied
+    max_enrichment_sentences: int = 0  # 0 = unlimited
 
     # Feature flag state at time of analysis
     enabled: bool = False
@@ -436,6 +555,125 @@ class DREContext:
     intent_malicious_confidence: float = 0.0
     query_type: str = ""
     five_layer_detected: Optional[List[str]] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 4: Negation prefix detection helper
+# ═══════════════════════════════════════════════════════════════
+
+def _has_negation_prefix(text: str, marker_position: int) -> bool:
+    """
+    Check if a marker at the given position is preceded by a negation prefix.
+
+    Looks at the 1-3 words before the marker position for negation words:
+    "ما", "لا", "مش", "ماني", "مو".
+    Returns True if negation is found → marker should NOT trigger.
+    """
+    # Extract the text before the marker (up to 30 chars for 1-3 words)
+    prefix_start = max(0, marker_position - 30)
+    prefix_text = text[prefix_start:marker_position].strip()
+    if not prefix_text:
+        return False
+
+    # Split into words and check last 1-3 words
+    words_before = prefix_text.split()
+    check_words = words_before[-3:] if len(words_before) >= 3 else words_before
+
+    for word in check_words:
+        if word in NEGATION_PREFIXES:
+            return True
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 6: Fiction / roleplay context check (Stage 0)
+# ═══════════════════════════════════════════════════════════════
+
+def _check_fiction_context(text: str) -> bool:
+    """
+    Stage 0: Check if text contains fiction/roleplay context indicators.
+
+    If fiction context detected, DRE should not activate — distress
+    markers in fiction are not real distress signals.
+    """
+    norm = normalize_arabic(text)
+    for indicator in FICTION_ROLEPLAY_INDICATORS:
+        if indicator.lower() in norm:
+            return True
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 5: False Goodness detection (Invariant 6 implementation)
+# ═══════════════════════════════════════════════════════════════
+
+def _check_false_goodness(text: str, s_decision: str) -> bool:
+    """
+    Invariant 6: detect excessive politeness/compliance that may mask
+    manipulative intent.
+
+    If false goodness indicators are present AND S_decision was
+    EXECUTE or EXECUTE_WITH_CAUTION, flag as potential false goodness.
+    DRE should NOT activate in this case.
+    """
+    if s_decision not in ("EXECUTE", "EXECUTE_WITH_CAUTION"):
+        return False
+
+    norm = normalize_arabic(text)
+    for indicator in FALSE_GOODNESS_INDICATORS:
+        if indicator.lower() in norm:
+            return True
+    return False
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 10: Causal language check (Invariant 4 enforcement)
+# ═══════════════════════════════════════════════════════════════
+
+class InvariantViolation(Exception):
+    """Raised when a DRE invariant is violated."""
+    pass
+
+
+def _check_no_causal_language(text: str) -> List[str]:
+    """
+    Scan text for causal language terms that violate Invariant 4.
+
+    Returns list of found causal terms. Empty list = no violations.
+    DRE output must never claim causal certainty.
+    """
+    found: List[str] = []
+    text_lower = text.lower()
+    for term in CAUSAL_LANGUAGE_TERMS:
+        if term.lower() in text_lower:
+            found.append(term)
+    return found
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 9: Authority Preservation — sentence limiting
+# ═══════════════════════════════════════════════════════════════
+
+def _apply_authority_preservation(guidance: str, s_decision: str) -> Tuple[str, int]:
+    """
+    Invariant 8: Limit enrichment output length based on S_decision severity.
+
+    BLOCK → max 2 sentences, BLOCK_SOFT → 3, CLARIFY → 5,
+    EXECUTE_WITH_CAUTION → unlimited (0).
+
+    Returns (truncated_guidance, max_sentences_applied).
+    """
+    max_sentences = MAX_ENRICHMENT_SENTENCES.get(s_decision, 0)
+    if max_sentences == 0 or not guidance:
+        return (guidance, max_sentences)
+
+    # Split on sentence boundaries (., !, ?, Arabic period)
+    sentences = re.split(r'(?<=[.!?。])\s+', guidance)
+    if len(sentences) <= max_sentences:
+        return (guidance, max_sentences)
+
+    truncated = " ".join(sentences[:max_sentences])
+    return (truncated, max_sentences)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -523,21 +761,22 @@ def detect_root_b_signals(text: str) -> List[RootSignal]:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  Cross-Causal Detection
+#  Co-Occurrence Detection (Fix 1: renamed from Cross-Causal)
 # ═══════════════════════════════════════════════════════════════
 
-def detect_cross_causal(
+def detect_co_occurrence(
     text: str,
     root_a: List[RootSignal],
     root_b: List[RootSignal],
 ) -> Tuple[str, List[str]]:
     """
-    Detect cross-causal relationship between Root A and Root B.
+    Detect co-occurrence relationship between Root A and Root B.
 
-    Evidence-bounded: only claims a direction when explicit language supports it.
+    Evidence-bounded: only claims a temporal direction when explicit language
+    supports it. NOT a causal claim — observational co-occurrence only.
     Default: "co_present_direction_unclear" when both present.
 
-    Returns (cross_causal_value, evidence_list).
+    Returns (co_occurrence_value, evidence_list).
     """
     if not root_a or not root_b:
         return ("none", [])
@@ -545,27 +784,37 @@ def detect_cross_causal(
     norm = normalize_arabic(text)
     evidence: List[str] = []
 
-    # Check explicit A→B direction (pain caused the harmful impulse)
-    a_feeds_b_found = False
-    for marker in CROSS_CAUSAL_A_FEEDS_B_AR + CROSS_CAUSAL_A_FEEDS_B_EN:
+    # Check A precedes B direction (distress preceded the harmful impulse)
+    a_precedes_found = False
+    for marker in CO_OCCURRENCE_A_PRECEDES_B_AR + CO_OCCURRENCE_A_PRECEDES_B_EN:
         if marker.lower() in norm:
             evidence.append(f"a→b: {marker}")
-            a_feeds_b_found = True
+            a_precedes_found = True
 
-    if a_feeds_b_found:
-        return ("explicit_a_feeds_b", evidence)
+    if a_precedes_found:
+        return ("a_precedes_b", evidence)
 
-    # Check explicit B→A direction (harmful action caused distress)
-    b_feeds_a_found = False
-    for marker in CROSS_CAUSAL_B_FEEDS_A_AR + CROSS_CAUSAL_B_FEEDS_A_EN:
+    # Check B precedes A direction (harmful action preceded distress)
+    b_precedes_found = False
+    for marker in CO_OCCURRENCE_B_PRECEDES_A_AR + CO_OCCURRENCE_B_PRECEDES_A_EN:
         if marker.lower() in norm:
             evidence.append(f"b→a: {marker}")
-            b_feeds_a_found = True
+            b_precedes_found = True
 
-    if b_feeds_a_found:
-        return ("explicit_b_feeds_a", evidence)
+    if b_precedes_found:
+        return ("b_precedes_a", evidence)
 
     return ("co_present_direction_unclear", [])
+
+
+# Backward compatibility alias
+def detect_cross_causal(
+    text: str,
+    root_a: List[RootSignal],
+    root_b: List[RootSignal],
+) -> Tuple[str, List[str]]:
+    """Backward compatibility wrapper — calls detect_co_occurrence."""
+    return detect_co_occurrence(text, root_a, root_b)
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -642,19 +891,29 @@ def _check_distress_authenticity(text: str) -> bool:
     Stage 2 of the activation gate: distress authenticity.
 
     Returns True if ≥1 strong distress marker OR ≥2 weak distress markers.
+    Fix 4: negated markers (e.g. "ما ابغى اموت") are skipped.
     """
     norm = normalize_arabic(text)
     strong_count = 0
     weak_count = 0
 
     for marker in ROOT_A_STRONG_MARKERS_AR + ROOT_A_STRONG_MARKERS_EN:
-        if marker.lower() in norm:
+        marker_lower = marker.lower()
+        pos = norm.find(marker_lower)
+        if pos != -1:
+            # Fix 4: skip if preceded by negation
+            if _has_negation_prefix(norm, pos):
+                continue
             strong_count += 1
             if strong_count >= STRONG_DISTRESS_THRESHOLD:
                 return True
 
     for marker in ROOT_A_WEAK_MARKERS_AR + ROOT_A_WEAK_MARKERS_EN:
-        if marker.lower() in norm:
+        marker_lower = marker.lower()
+        pos = norm.find(marker_lower)
+        if pos != -1:
+            if _has_negation_prefix(norm, pos):
+                continue
             weak_count += 1
             if weak_count >= WEAK_DISTRESS_THRESHOLD:
                 return True
@@ -705,22 +964,32 @@ def _check_harmful_moral_drift(text: str) -> bool:
 
 def should_activate_dre(ctx: DREContext) -> Tuple[bool, str]:
     """
-    Three-stage activation gate for DRE.
+    Four-stage activation gate for DRE.
 
+    Stage 0: Fiction/roleplay exclusion (Fix 6)
     Stage 1: Safety relevance (S_decision, H range, false goodness, malicious)
     Stage 2: Distress authenticity (strong/weak distress markers)
     Stage 3: Harmful moral drift (Root B markers or drift+target)
 
     Returns (should_activate, reason).
-    DRE activates when Stage 1 passes AND (Stage 2 OR Stage 3 passes).
+    DRE activates when all stages pass: Stage 0 clean, Stage 1 passes,
+    AND (Stage 2 OR Stage 3 passes).
     Graceful degradation: single-root enrichment when only one stage passes.
     """
+    # ── Stage 0: Fiction/roleplay exclusion (Fix 6) ─────────
+    if _check_fiction_context(ctx.text):
+        return (False, "fiction_or_roleplay_context")
+
     # ── Stage 1: Safety relevance ────────────────────────────
     if ctx.s_decision in EXCLUDED_S_DECISIONS:
         return (False, f"excluded_s_decision:{ctx.s_decision}")
 
     if ctx.false_goodness_detected:
         return (False, "false_goodness_guard")
+
+    # Fix 5: Enhanced false goodness detection — check indicators in text
+    if _check_false_goodness(ctx.text, ctx.s_decision):
+        return (False, "false_goodness_indicators_detected")
 
     if ctx.intent_malicious_confidence >= MALICIOUS_INTENT_THRESHOLD:
         return (False, "malicious_intent_exclusion")
@@ -791,6 +1060,20 @@ def validate_single_mind(
     if analysis.dre_active and not analysis.prohibited_claims:
         violations.append("invariant_4: active but prohibited_claims empty")
 
+    # Fix 10: Invariant 4 extended — scan all output fields for causal language
+    if analysis.dre_active:
+        fields_to_check = [
+            ("response_guidance", analysis.response_guidance),
+            ("enrichment_mode", analysis.enrichment_mode),
+            ("co_occurrence_type", analysis.co_occurrence_type),
+        ]
+        for field_name, field_value in fields_to_check:
+            causal_terms = _check_no_causal_language(field_value)
+            if causal_terms:
+                violations.append(
+                    f"invariant_4: causal language {causal_terms} in {field_name}"
+                )
+
     # Invariant 5: Meta-Oversight audit — clinical labels check
     guidance_lower = analysis.response_guidance.lower()
     for term in CLINICAL_PROHIBITED_TERMS:
@@ -804,6 +1087,17 @@ def validate_single_mind(
 
     # Invariant 7: Malicious intent exclusion
     # (enforced in activation gate, but double-check)
+
+    # Invariant 8: Authority Preservation (Fix 9)
+    if analysis.dre_active and s_decision in ("BLOCK", "BLOCK_SOFT"):
+        max_s = MAX_ENRICHMENT_SENTENCES.get(s_decision, 0)
+        if max_s > 0 and analysis.response_guidance:
+            sentences = re.split(r'(?<=[.!?。])\s+', analysis.response_guidance)
+            if len(sentences) > max_s:
+                violations.append(
+                    f"invariant_8: guidance has {len(sentences)} sentences, "
+                    f"max {max_s} for {s_decision}"
+                )
 
     return violations
 
@@ -890,8 +1184,8 @@ def analyze_dual_root(text: str, ctx: DREContext) -> DualRootAnalysis:
 
     analysis.activation_confidence = analysis.pattern_confidence
 
-    # ── Cross-causal detection ───────────────────────────────
-    analysis.cross_causal, analysis.cross_causal_evidence = detect_cross_causal(
+    # ── Co-occurrence detection (Fix 1: renamed from cross-causal) ──
+    analysis.co_occurrence_type, analysis.co_occurrence_evidence = detect_co_occurrence(
         text, root_a_signals, root_b_signals,
     )
 
@@ -900,5 +1194,23 @@ def analyze_dual_root(text: str, ctx: DREContext) -> DualRootAnalysis:
 
     # ── Response guidance generation ─────────────────────────
     analysis.response_guidance = generate_response_guidance(analysis)
+
+    # ── Fix 6: Mark fiction context in result ────────────────
+    analysis.fiction_or_roleplay_context = _check_fiction_context(text)
+
+    # ── Fix 5: Mark false goodness in result ─────────────────
+    analysis.false_goodness_flag = _check_false_goodness(text, ctx.s_decision)
+
+    # ── Fix 9: Apply authority preservation sentence limits ──
+    analysis.response_guidance, analysis.max_enrichment_sentences = (
+        _apply_authority_preservation(analysis.response_guidance, ctx.s_decision)
+    )
+
+    # ── Fix 10: Invariant 4 enforcement — raise on causal language ──
+    causal_in_guidance = _check_no_causal_language(analysis.response_guidance)
+    if causal_in_guidance:
+        raise InvariantViolation(
+            f"invariant_4: causal language {causal_in_guidance} in response_guidance"
+        )
 
     return analysis

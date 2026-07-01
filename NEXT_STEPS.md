@@ -1,5 +1,5 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-06-30 by Cowork session (✅ مراجعة 4 موديلات للـ Uncertainty module كاملة + 4 أخطاء اتصلحت. التفاصيل: UNCERTAINTY_REVIEW_CONSENSUS.md)
+Last updated: 2026-06-30 by Cowork session (✅ FN#070 PSP كامل — بناء + مراجعة 3 موديلات + 3 أخطاء P0 اتصلحت + 12 اختبار جديد. commit b712ade pushed)
 
 ## Urgent (هذا الأسبوع) — بعد المراجعة الخارجية 2026-06-30
 
@@ -12,10 +12,10 @@ Last updated: 2026-06-30 by Cowork session (✅ مراجعة 4 موديلات ل
 
 ### خطة تنفيذ جديدة (من المراجعة الخارجية — إجماع 3 موديلات):
 - [x] (AATIF) ✅ **FN#058 — Context Drift Detection** — أولوية 1. 2026-06-30: `engine/aatif_drift_detector.py` (DriftDetector + ConversationManager + compute_h_eff) + تكامل في `aatif_s_equation.py` (H_eff في gate + hard override). 54 اختبار جديد (`test_drift_detector.py`) + 349 اختبار سابق = صفر تراجع. B-prime architecture: detector=observational، equation=judicial. Single Mind محفوظ.
-- [ ] (AATIF) **FN#070 — Possibility Space** — أولوية 2 (أقوى ترقية مفاهيمية — من binary لـ distributional)
+- [x] (AATIF) ✅ **FN#070 — Possibility Space Preservation (PSP)** — أولوية 2. 2026-06-30: `engine/aatif_psp_detector.py` (PSPState 6-state lifecycle، objective suppressors، dialect markers، "reopen" gate) + `tests/test_psp_detector.py` (123 اختبار). تصميم إجماع Claude×ChatGPT. مراجعة خارجية 3 موديلات (Grok×DeepSeek×Gemini): 3 أخطاء P0 اتصلحت (sticky closure flag، missing CLOSURE_REQUESTED→EXPLORING، quiet_turns_count). `apply_psp_transition()` helper جديد. B-prime: observational only، Single Mind محفوظ. صفر تراجع (2565 نجح). commits: 2cdadca (build) + b712ade (bug fixes)
 - [x] (AATIF) ✅ **NEW: Uncertainty/Calibration module** — أولوية 3. 2026-06-30: `engine/aatif_uncertainty_detector.py` (UncertaintyDetector + 4 مصادر + ξ(d) + Arabic penalties + trace) + confidence gate في `aatif_s_equation.py` (EXECUTE→CLARIFY لما confidence < ξ(d)) + Layer 8 false certainty في `aatif_output_gate.py` + UncertaintyDisclosure في `aatif_response_shaper.py`. 89 اختبار جديد (71 وحدة + 18 تكامل). تصميم إجماع Claude×ChatGPT. B-prime: detector=observational، equation=judicial. Single Mind محفوظ. صفر تراجع (2532 نجح).
   - [x] (AATIF) ✅ **مراجعة خارجية 4 موديلات (ChatGPT + Gemini + Grok + DeepSeek)** — 2026-06-30: إجماع كامل. 4 أخطاء مؤكدة اتصلحت: (1) trace overflow→EMA، (2) H-I divergence→symmetric، (3) abstention→مربوط في gate، (4) NaN guard→fail-safe. + 4 اختبارات عدائية جديدة (75 نجح). التقرير الكامل: `UNCERTAINTY_REVIEW_CONSENSUS.md`
-- [ ] (AATIF) **FN#050 — Dual-Root Reconstruction** — أولوية 4 (خلاف: Gemini=AI-complete، Grok+ChatGPT=أقوى إسهام عربي)
+- [ ] (AATIF) 🔨 **FN#050 — Dual-Root Reconstruction** — أولوية 4. بناء كامل (1216 سطر) + 201 اختبار. مراجعة خارجية 3 موديلات كاملة. 10 إصلاحات P0 اتنفذت (2026-07-01): (1) cross_causal→co_occurrence, (2) feminine forms مقهورة/منكسرة+6, (3) Gulf ابي/أبي, (4) negation handling, (5) Invariant 6 real implementation, (6) Stage 0 fiction/roleplay, (7) clinical synonyms expanded, (8) عيب/عار 9th category, (9) Invariant 8 Authority Preservation, (10) Invariant 4 causal language check. **2766 اختبار نجح / صفر تراجع. الحين: push + FN#044**
 - [ ] (AATIF) **FN#044 — Temporal Safety Decay** — أولوية 5 (يحوّل النظام لـ conversation-level)
 - [ ] (AATIF) **FN#041 — Safety Inheritance** — أولوية 6 (مع FN#044 يكملوا بعض)
 - [ ] (AATIF) **Evaluation strengthening** — baselines حقيقية (Llama Guard)، توسعة held-out، ablation studies

@@ -2,8 +2,8 @@
 Test suite for FN#050 Dual-Root Reconstruction Engine — aatif_dual_root.py
 
 Tests the DualRootDetector (observational, post-S response enrichment),
-DualRootAnalysis/DREContext dataclasses, the three-stage activation gate,
-8 Arabic-specific root categories, graceful degradation, cross-causal
+DualRootAnalysis/DREContext dataclasses, the four-stage activation gate,
+9 Arabic-specific root categories, graceful degradation, co-occurrence
 detection, POM trace construction, clinical boundary enforcement, and
 — critically — the Single Mind invariants (DRE never touches S/H/θ/I/E).
 
@@ -22,16 +22,23 @@ from aatif_dual_root import (
     DualRootAnalysis,
     DREContext,
     RootSignal,
+    InvariantViolation,
     DRE_ENABLED,
     DRE_MONITOR_ONLY,
     detect_root_a_signals,
     detect_root_b_signals,
     detect_cross_causal,
+    detect_co_occurrence,
     build_pom_trace,
     generate_response_guidance,
     should_activate_dre,
     analyze_dual_root,
     validate_single_mind,
+    _has_negation_prefix,
+    _check_fiction_context,
+    _check_false_goodness,
+    _check_no_causal_language,
+    _apply_authority_preservation,
     ELIGIBLE_S_DECISIONS,
     EXCLUDED_S_DECISIONS,
     H_RANGE_MIN,
@@ -44,9 +51,15 @@ from aatif_dual_root import (
     ROOT_A_TYPES,
     ROOT_B_TYPES,
     CROSS_CAUSAL_VALUES,
+    CO_OCCURRENCE_VALUES,
     GUIDANCE_TEMPLATES,
     ROOT_STRONG_SIGNAL_WEIGHT,
     ROOT_WEAK_SIGNAL_WEIGHT,
+    FALSE_GOODNESS_INDICATORS,
+    FICTION_ROLEPLAY_INDICATORS,
+    MAX_ENRICHMENT_SENTENCES,
+    NEGATION_PREFIXES,
+    CAUSAL_LANGUAGE_TERMS,
 )
 
 
@@ -116,11 +129,15 @@ class TestDataclasses:
         assert a.root_a_signal_detected is False
         assert a.root_b_signal_detected is False
         assert a.dual_root_pattern_detected is False
-        assert a.cross_causal == "none"
+        assert a.co_occurrence_type == "none"
         assert a.pom_trace == {}
         assert a.enrichment_mode == ""
         assert a.response_guidance == ""
         assert a.prohibited_claims == []
+        # New fields from fixes
+        assert a.false_goodness_flag is False
+        assert a.fiction_or_roleplay_context is False
+        assert a.max_enrichment_sentences == 0
 
     def test_dre_context_defaults(self):
         c = DREContext()
@@ -594,72 +611,85 @@ class TestGracefulDegradation:
 
 
 # ═══════════════════════════════════════════════════════════════
-#  TestCrossCausal — Evidence-bounded cross-causal detection
+#  TestCoOccurrence — Evidence-bounded co-occurrence detection
+#  (Fix 1: renamed from TestCrossCausal)
 # ═══════════════════════════════════════════════════════════════
 
-class TestCrossCausal:
+class TestCoOccurrence:
     def test_no_roots_returns_none(self):
-        cc, evidence = detect_cross_causal("test", [], [])
+        cc, evidence = detect_co_occurrence("test", [], [])
         assert cc == "none"
         assert evidence == []
 
     def test_one_root_only_returns_none(self):
         root_a = [RootSignal(signal_type="pain", evidence=["hurt"], strength=0.8)]
-        cc, evidence = detect_cross_causal("hurt me", root_a, [])
+        cc, evidence = detect_co_occurrence("hurt me", root_a, [])
         assert cc == "none"
 
     def test_both_roots_no_direction_returns_unclear(self):
         root_a = [RootSignal(signal_type="pain", evidence=["hurt"], strength=0.8)]
         root_b = [RootSignal(signal_type="justification", evidence=["deserves"], strength=0.8)]
-        cc, evidence = detect_cross_causal("hurt and deserves it", root_a, root_b)
+        cc, evidence = detect_co_occurrence("hurt and deserves it", root_a, root_b)
         assert cc == "co_present_direction_unclear"
 
-    def test_explicit_a_feeds_b_arabic(self):
+    def test_a_precedes_b_arabic(self):
         root_a = [RootSignal(signal_type="pain", evidence=["وجع"], strength=0.8)]
         root_b = [RootSignal(signal_type="retaliatory_justice", evidence=["حقي"], strength=0.8)]
-        cc, evidence = detect_cross_causal(
+        cc, evidence = detect_co_occurrence(
             "من كثر الألم ابغى اخذ حقي",
             root_a, root_b,
         )
-        assert cc == "explicit_a_feeds_b"
+        assert cc == "a_precedes_b"
         assert any("a→b" in e for e in evidence)
 
-    def test_explicit_a_feeds_b_english(self):
+    def test_a_precedes_b_english(self):
         root_a = [RootSignal(signal_type="pain", evidence=["pain"], strength=0.8)]
         root_b = [RootSignal(signal_type="retaliatory_justice", evidence=["revenge"], strength=0.8)]
-        cc, evidence = detect_cross_causal(
+        cc, evidence = detect_co_occurrence(
             "Because of the pain I want revenge",
             root_a, root_b,
         )
-        assert cc == "explicit_a_feeds_b"
+        assert cc == "a_precedes_b"
 
-    def test_explicit_b_feeds_a_arabic(self):
+    def test_b_precedes_a_arabic(self):
         root_a = [RootSignal(signal_type="pain", evidence=["تعب"], strength=0.8)]
         root_b = [RootSignal(signal_type="retaliatory_justice", evidence=["انتقام"], strength=0.8)]
-        cc, evidence = detect_cross_causal(
+        cc, evidence = detect_co_occurrence(
             "ندمت بعد الانتقام وتعبت",
             root_a, root_b,
         )
-        assert cc == "explicit_b_feeds_a"
+        assert cc == "b_precedes_a"
         assert any("b→a" in e for e in evidence)
 
-    def test_explicit_b_feeds_a_english(self):
+    def test_b_precedes_a_english(self):
         root_a = [RootSignal(signal_type="pain", evidence=["guilt"], strength=0.8)]
         root_b = [RootSignal(signal_type="retaliatory_justice", evidence=["revenge"], strength=0.8)]
-        cc, evidence = detect_cross_causal(
+        cc, evidence = detect_co_occurrence(
             "I feel guilty about getting revenge, it made me feel worse",
             root_a, root_b,
         )
-        assert cc == "explicit_b_feeds_a"
+        assert cc == "b_precedes_a"
 
-    def test_cross_causal_values_valid(self):
-        for val in CROSS_CAUSAL_VALUES:
+    def test_co_occurrence_values_valid(self):
+        """Fix 1: renamed enum values — a_precedes_b, b_precedes_a."""
+        for val in CO_OCCURRENCE_VALUES:
             assert isinstance(val, str)
-        assert "none" in CROSS_CAUSAL_VALUES
-        assert "co_present_direction_unclear" in CROSS_CAUSAL_VALUES
-        assert "explicit_a_feeds_b" in CROSS_CAUSAL_VALUES
-        assert "explicit_b_feeds_a" in CROSS_CAUSAL_VALUES
-        assert "independent" in CROSS_CAUSAL_VALUES
+        assert "none" in CO_OCCURRENCE_VALUES
+        assert "co_present_direction_unclear" in CO_OCCURRENCE_VALUES
+        assert "a_precedes_b" in CO_OCCURRENCE_VALUES
+        assert "b_precedes_a" in CO_OCCURRENCE_VALUES
+        assert "independent" in CO_OCCURRENCE_VALUES
+
+    def test_backward_compat_alias(self):
+        """detect_cross_causal still works as alias."""
+        root_a = [RootSignal(signal_type="pain", evidence=["hurt"], strength=0.8)]
+        root_b = [RootSignal(signal_type="justification", evidence=["deserves"], strength=0.8)]
+        cc, evidence = detect_cross_causal("hurt and deserves it", root_a, root_b)
+        assert cc == "co_present_direction_unclear"
+
+    def test_cross_causal_values_alias(self):
+        """CROSS_CAUSAL_VALUES is still importable (backward compat)."""
+        assert CROSS_CAUSAL_VALUES == CO_OCCURRENCE_VALUES
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -942,13 +972,13 @@ class TestFullPipeline:
         result = analyze_dual_root(text, ctx)
         assert result.dre_active is False
 
-    def test_cross_causal_in_full_analysis(self, enable_dre):
+    def test_co_occurrence_in_full_analysis(self, enable_dre):
         text = "من كثر الألم ابغى اخذ حقي ولازم يتأدب"
         ctx = _eligible_ctx(text=text)
         result = analyze_dual_root(text, ctx)
 
         if result.root_a_signal_detected and result.root_b_signal_detected:
-            assert result.cross_causal in CROSS_CAUSAL_VALUES
+            assert result.co_occurrence_type in CO_OCCURRENCE_VALUES
 
     def test_pom_trace_in_full_analysis(self, enable_dre):
         text = "مقهور ومنكسر ولازم اخذ حقي"
@@ -1114,14 +1144,16 @@ class TestConstants:
 
     def test_root_a_types_exist(self):
         expected = ["pain", "fear", "humiliation_pain", "injustice_pain",
-                    "avoidance_loop", "flooding", "emotional_threshold_exceeded"]
+                    "avoidance_loop", "flooding", "emotional_threshold_exceeded",
+                    "shame_pain"]  # Fix 8
         for t in expected:
             assert t in ROOT_A_TYPES
 
     def test_root_b_types_exist(self):
         expected = ["justification", "normalization", "moral_inversion",
                     "retaliatory_justice", "dehumanizing_or_punitive_wish",
-                    "reputation_harm", "reciprocal_harm_justification"]
+                    "reputation_harm", "reciprocal_harm_justification",
+                    "shame_defiance"]  # Fix 8
         for t in expected:
             assert t in ROOT_B_TYPES
 
@@ -1133,3 +1165,382 @@ class TestConstants:
     def test_signal_weights(self):
         assert ROOT_STRONG_SIGNAL_WEIGHT == 0.80
         assert ROOT_WEAK_SIGNAL_WEIGHT == 0.40
+
+    def test_new_constants_exist(self):
+        """All new Fix constants are importable."""
+        assert len(FALSE_GOODNESS_INDICATORS) > 0
+        assert len(FICTION_ROLEPLAY_INDICATORS) > 0
+        assert len(MAX_ENRICHMENT_SENTENCES) > 0
+        assert len(NEGATION_PREFIXES) > 0
+        assert len(CAUSAL_LANGUAGE_TERMS) > 0
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 1: TestCoOccurrenceRename — verify renaming
+# ═══════════════════════════════════════════════════════════════
+
+class TestCoOccurrenceRename:
+    """Fix 1: verify cross_causal → co_occurrence rename throughout."""
+
+    def test_analysis_uses_co_occurrence_type(self):
+        a = DualRootAnalysis()
+        assert hasattr(a, "co_occurrence_type")
+        assert a.co_occurrence_type == "none"
+
+    def test_analysis_uses_co_occurrence_evidence(self):
+        a = DualRootAnalysis()
+        assert hasattr(a, "co_occurrence_evidence")
+        assert a.co_occurrence_evidence == []
+
+    def test_enum_values_renamed(self):
+        assert "a_precedes_b" in CO_OCCURRENCE_VALUES
+        assert "b_precedes_a" in CO_OCCURRENCE_VALUES
+        # Old names should NOT be in the new set
+        assert "explicit_a_feeds_b" not in CO_OCCURRENCE_VALUES
+        assert "explicit_b_feeds_a" not in CO_OCCURRENCE_VALUES
+
+    def test_full_analysis_uses_new_field(self, enable_dre):
+        text = "من كثر الألم ابغى اخذ حقي ولازم يتأدب"
+        ctx = _eligible_ctx(text=text)
+        result = analyze_dual_root(text, ctx)
+        assert result.co_occurrence_type in CO_OCCURRENCE_VALUES
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 2: TestFeminineDistressMarkers
+# ═══════════════════════════════════════════════════════════════
+
+class TestFeminineDistressMarkers:
+    """Fix 2: feminine forms of Arabic distress markers."""
+
+    def test_feminine_strong_markers(self):
+        feminine_texts = [
+            "أنا مقهورة", "أنا منكسرة", "أنا مخنوقة",
+        ]
+        for text in feminine_texts:
+            signals = detect_root_a_signals(text)
+            assert len(signals) > 0, f"Feminine form not detected: {text}"
+
+    def test_feminine_weak_markers_in_stage2(self):
+        """Feminine weak markers participate in Stage 2 distress authenticity."""
+        from aatif_dual_root import _check_distress_authenticity
+        # Two feminine weak markers → authenticity passes
+        assert _check_distress_authenticity("تعبانة وزعلانة") is True
+        assert _check_distress_authenticity("حزينة ومظلومة") is True
+
+    def test_feminine_fear_in_types(self):
+        """خايفة is in ROOT_A_TYPES[fear] and triggers signal detection."""
+        signals = detect_root_a_signals("خايفة")
+        types = [s.signal_type for s in signals]
+        assert "fear" in types
+
+    def test_feminine_triggers_distress_authenticity(self):
+        from aatif_dual_root import _check_distress_authenticity
+        # مقهورة is a strong marker — 1 should be enough
+        assert _check_distress_authenticity("مقهورة") is True
+        # تعبانة + زعلانة = 2 weak markers
+        assert _check_distress_authenticity("تعبانة وزعلانة") is True
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 3: TestGulfDialectVariants
+# ═══════════════════════════════════════════════════════════════
+
+class TestGulfDialectVariants:
+    """Fix 3: Gulf dialect variants (ابي alongside ابغى)."""
+
+    def test_gulf_strong_marker_abi_amoot(self):
+        from aatif_dual_root import _check_distress_authenticity
+        assert _check_distress_authenticity("ابي اموت") is True
+        assert _check_distress_authenticity("أبي اموت") is True
+
+    def test_gulf_drift_phrase_abi(self):
+        from aatif_dual_root import _check_harmful_moral_drift
+        assert _check_harmful_moral_drift("ابي اضربه") is True
+        assert _check_harmful_moral_drift("أبي أضربه") is True
+
+    def test_gulf_variant_in_root_a_detection(self):
+        signals = detect_root_a_signals("ابي اموت")
+        # Should not crash; may or may not detect depending on type mapping
+        # but the strong marker list should contain it
+        from aatif_dual_root import ROOT_A_STRONG_MARKERS_AR
+        assert "ابي اموت" in ROOT_A_STRONG_MARKERS_AR
+        assert "أبي اموت" in ROOT_A_STRONG_MARKERS_AR
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 4: TestNegationHandling
+# ═══════════════════════════════════════════════════════════════
+
+class TestNegationHandling:
+    """Fix 4: negation prefixes suppress distress markers."""
+
+    def test_negation_prefix_detection(self):
+        # "ما" before marker position
+        assert _has_negation_prefix("ما ابغى اموت", 3) is True
+        # No negation
+        assert _has_negation_prefix("ابغى اموت", 0) is False
+
+    def test_negated_strong_marker_does_not_trigger(self):
+        from aatif_dual_root import _check_distress_authenticity
+        # "ما ابغى اموت" (I do NOT want to die) should NOT trigger
+        assert _check_distress_authenticity("ما ابغى اموت") is False
+
+    def test_non_negated_still_triggers(self):
+        from aatif_dual_root import _check_distress_authenticity
+        assert _check_distress_authenticity("ابغى اموت") is True
+
+    def test_negation_prefixes_list(self):
+        expected = ["ما", "لا", "مش", "ماني", "مو"]
+        for p in expected:
+            assert p in NEGATION_PREFIXES
+
+    def test_negation_with_msh_prefix(self):
+        assert _has_negation_prefix("مش عايز اموت", 4) is True
+
+    def test_negation_with_mani_prefix(self):
+        assert _has_negation_prefix("ماني ابغى اموت", 5) is True
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 5: TestFalseGoodnessGuard — Invariant 6 implementation
+# ═══════════════════════════════════════════════════════════════
+
+class TestFalseGoodnessGuard:
+    """Fix 5: False Goodness detection with indicators."""
+
+    def test_false_goodness_indicators_list(self):
+        assert "عادي ما عليك" in FALSE_GOODNESS_INDICATORS
+        assert "it's fine really" in FALSE_GOODNESS_INDICATORS
+        assert "no worries at all" in FALSE_GOODNESS_INDICATORS
+
+    def test_false_goodness_detected_with_execute(self):
+        assert _check_false_goodness(
+            "عادي ما عليك كله تمام", "EXECUTE_WITH_CAUTION"
+        ) is True
+
+    def test_false_goodness_not_triggered_on_clarify(self):
+        # Only triggers on EXECUTE / EXECUTE_WITH_CAUTION
+        assert _check_false_goodness(
+            "عادي ما عليك", "CLARIFY"
+        ) is False
+
+    def test_false_goodness_not_triggered_without_indicators(self):
+        assert _check_false_goodness(
+            "مقهور ومنكسر", "EXECUTE_WITH_CAUTION"
+        ) is False
+
+    def test_false_goodness_blocks_activation(self):
+        ctx = _eligible_ctx(
+            text="عادي ما عليك it's fine really",
+            s_decision="EXECUTE_WITH_CAUTION",
+        )
+        ok, reason = should_activate_dre(ctx)
+        assert ok is False
+        assert "false_goodness" in reason
+
+    def test_false_goodness_flag_in_analysis(self, enable_dre):
+        a = DualRootAnalysis()
+        assert a.false_goodness_flag is False
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 6: TestFictionRoleplayExclusion — Stage 0
+# ═══════════════════════════════════════════════════════════════
+
+class TestFictionRoleplayExclusion:
+    """Fix 6: fiction/roleplay context triggers Stage 0 abort."""
+
+    def test_fiction_indicators_list(self):
+        for term in ["قصة", "رواية", "fiction", "story", "roleplay",
+                     "character", "pretend", "imagine"]:
+            assert term in FICTION_ROLEPLAY_INDICATORS
+
+    def test_fiction_detected_arabic(self):
+        assert _check_fiction_context("في قصة كتبتها شخصية مقهورة") is True
+
+    def test_fiction_detected_english(self):
+        assert _check_fiction_context("In this fiction story the character is hurt") is True
+
+    def test_no_fiction_on_real_distress(self):
+        assert _check_fiction_context("أنا مقهور ومنكسر") is False
+
+    def test_fiction_blocks_activation(self):
+        ctx = _eligible_ctx(
+            text="في قصة مقهور ولازم اخذ حقي",
+        )
+        ok, reason = should_activate_dre(ctx)
+        assert ok is False
+        assert reason == "fiction_or_roleplay_context"
+
+    def test_roleplay_blocks_activation(self):
+        ctx = _eligible_ctx(
+            text="Let's roleplay a character who is broken and wants revenge",
+        )
+        ok, reason = should_activate_dre(ctx)
+        assert ok is False
+        assert reason == "fiction_or_roleplay_context"
+
+    def test_fiction_field_in_analysis(self, enable_dre):
+        a = DualRootAnalysis()
+        assert a.fiction_or_roleplay_context is False
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 7: TestExpandedClinicalBoundary
+# ═══════════════════════════════════════════════════════════════
+
+class TestExpandedClinicalBoundary:
+    """Fix 7: expanded clinical boundary synonyms."""
+
+    def test_new_clinical_terms_in_list(self):
+        new_terms = ["استشارة", "دكتور نفسي", "حالة نفسية", "جلسة علاج"]
+        for term in new_terms:
+            assert term in CLINICAL_PROHIBITED_TERMS, \
+                f"Missing clinical term: {term}"
+
+    def test_clinical_terms_trigger_invariant_5(self):
+        a = DualRootAnalysis(
+            dre_active=True,
+            enrichment_mode="dual_root",
+            response_guidance="يحتاج استشارة ودكتور نفسي",
+            prohibited_claims=list(DEFAULT_PROHIBITED_CLAIMS),
+        )
+        violations = validate_single_mind(a, "CLARIFY")
+        assert any("invariant_5" in v for v in violations)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 8: TestShameCategory — عيب/عار (9th category)
+# ═══════════════════════════════════════════════════════════════
+
+class TestShameCategory:
+    """Fix 8: shame/social defiance as 9th Arabic-specific category."""
+
+    def test_shame_root_a_detection(self):
+        signals = detect_root_a_signals("عيب وعار وفضيحة علينا")
+        types = [s.signal_type for s in signals]
+        assert "shame_pain" in types
+
+    def test_shame_root_b_detection(self):
+        signals = detect_root_b_signals("أعرف عيب بس مش قادر أوقف")
+        types = [s.signal_type for s in signals]
+        assert "shame_defiance" in types
+
+    def test_shame_english_root_b(self):
+        signals = detect_root_b_signals("I know it's wrong but I can't stop")
+        types = [s.signal_type for s in signals]
+        assert "shame_defiance" in types
+
+    def test_shame_markers_in_weak_list(self):
+        from aatif_dual_root import ROOT_A_WEAK_MARKERS_AR
+        assert "عيب" in ROOT_A_WEAK_MARKERS_AR
+        assert "عار" in ROOT_A_WEAK_MARKERS_AR
+
+    def test_shame_defiance_in_root_b_markers(self):
+        from aatif_dual_root import ROOT_B_MARKERS_AR
+        assert "بس ما أقدر أوقف" in ROOT_B_MARKERS_AR
+        assert "أعرف عيب بس" in ROOT_B_MARKERS_AR
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 9: TestAuthorityPreservation — Invariant 8
+# ═══════════════════════════════════════════════════════════════
+
+class TestAuthorityPreservation:
+    """Fix 9: enrichment sentence limits by S_decision severity."""
+
+    def test_max_sentences_config(self):
+        assert MAX_ENRICHMENT_SENTENCES["BLOCK"] == 2
+        assert MAX_ENRICHMENT_SENTENCES["BLOCK_SOFT"] == 3
+        assert MAX_ENRICHMENT_SENTENCES["CLARIFY"] == 5
+        assert MAX_ENRICHMENT_SENTENCES["EXECUTE_WITH_CAUTION"] == 0
+
+    def test_block_limits_to_2_sentences(self):
+        guidance = "First sentence. Second sentence. Third sentence. Fourth."
+        result, max_s = _apply_authority_preservation(guidance, "BLOCK")
+        assert max_s == 2
+        # Should have at most 2 sentences
+        sentences = [s for s in result.split(". ") if s.strip()]
+        assert len(sentences) <= 2
+
+    def test_block_soft_limits_to_3_sentences(self):
+        guidance = "One. Two. Three. Four. Five."
+        result, max_s = _apply_authority_preservation(guidance, "BLOCK_SOFT")
+        assert max_s == 3
+
+    def test_execute_with_caution_unlimited(self):
+        guidance = "One. Two. Three. Four. Five. Six. Seven."
+        result, max_s = _apply_authority_preservation(guidance, "EXECUTE_WITH_CAUTION")
+        assert max_s == 0  # unlimited
+        assert result == guidance  # unchanged
+
+    def test_empty_guidance_unchanged(self):
+        result, max_s = _apply_authority_preservation("", "BLOCK")
+        assert result == ""
+
+    def test_invariant_8_in_validate(self):
+        long_guidance = "Sentence one. Sentence two. Sentence three. Sentence four."
+        a = DualRootAnalysis(
+            dre_active=True,
+            enrichment_mode="dual_root",
+            response_guidance=long_guidance,
+            prohibited_claims=list(DEFAULT_PROHIBITED_CLAIMS),
+        )
+        violations = validate_single_mind(a, "BLOCK")
+        assert any("invariant_8" in v for v in violations)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Fix 10: TestCausalLanguageCheck — Invariant 4 enforcement
+# ═══════════════════════════════════════════════════════════════
+
+class TestCausalLanguageCheck:
+    """Fix 10: no causal language in DRE output fields."""
+
+    def test_causal_terms_detected(self):
+        found = _check_no_causal_language("pain feeds the anger")
+        assert "feeds" in found
+
+    def test_no_causal_terms_clean(self):
+        found = _check_no_causal_language("I notice distress signals")
+        assert found == []
+
+    def test_arabic_causal_detected(self):
+        found = _check_no_causal_language("الألم يسبب الغضب")
+        assert "يسبب" in found
+
+    def test_invariant_violation_exception_exists(self):
+        """InvariantViolation is importable and is an Exception."""
+        assert issubclass(InvariantViolation, Exception)
+
+    def test_causal_in_validate_single_mind(self):
+        a = DualRootAnalysis(
+            dre_active=True,
+            enrichment_mode="dual_root",
+            response_guidance="This feeds the cycle.",
+            prohibited_claims=list(DEFAULT_PROHIBITED_CLAIMS),
+            co_occurrence_type="none",
+        )
+        violations = validate_single_mind(a, "CLARIFY")
+        assert any("invariant_4" in v and "causal" in v for v in violations)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestArabicCategories update — add 9th category test
+# ═══════════════════════════════════════════════════════════════
+
+class TestNinthCategory:
+    """Fix 8: 9th category — عيب/عار dual-root pattern."""
+
+    def test_category_i_shame_as_root_a(self):
+        """عيب / عار → root_a shame_pain"""
+        for text in ["عيب", "عار", "فضيحة علينا"]:
+            signals = detect_root_a_signals(text)
+            assert len(signals) > 0, f"Category I (shame) failed for: {text}"
+
+    def test_category_i_defiance_as_root_b(self):
+        """أعرف عيب بس / مش قادر أوقف → root_b shame_defiance"""
+        signals = detect_root_b_signals("أعرف عيب بس مش قادر أوقف")
+        types = [s.signal_type for s in signals]
+        assert "shame_defiance" in types
