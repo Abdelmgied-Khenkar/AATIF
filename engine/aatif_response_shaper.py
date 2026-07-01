@@ -53,6 +53,12 @@ from aatif_psp_detector import (
     BOUNDED_HARD_MAX,
     TRADEOFF_REQUIRED_THRESHOLD,
 )
+import aatif_uncertainty_detector as _uc_mod
+from aatif_uncertainty_detector import (
+    UncertaintyDetector,
+    UncertaintyReading,
+    UncertaintyDisclosure,
+)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -130,6 +136,8 @@ class ResponseShape:
     firmness: float = 0.0
     # FN#070 PSP shaping (None unless a PSPReading was supplied).
     psp_shaping: Optional[PSPShaping] = None
+    # Uncertainty disclosure (None unless uncertainty is significant).
+    uncertainty_disclosure: Optional[UncertaintyDisclosure] = None
 
 
 
@@ -230,7 +238,9 @@ class AATIFResponseShaper:
 
 
     def shape(self, reading, memory_context=None,
-              psp_reading=None, psp_domain_config=None) -> ResponseShape:
+              psp_reading=None, psp_domain_config=None,
+              uncertainty_reading: Optional[UncertaintyReading] = None,
+              engine_result: Optional[dict] = None) -> ResponseShape:
         memory_context = memory_context or {}
 
 
@@ -286,6 +296,21 @@ class AATIFResponseShaper:
             if psp_shaping.active and psp_shaping.instruction:
                 meaning = meaning + "\n" + psp_shaping.instruction
 
+        # Uncertainty disclosure — inject what's unknown into meaning_instruction
+        # when uncertainty is significant. STYLISTIC ONLY — never touches S/H/θ.
+        uncertainty_disclosure = None
+        if (uncertainty_reading is not None
+                and _uc_mod.UNCERTAINTY_ENABLED
+                and uncertainty_reading.enabled):
+            uncertainty_disclosure = UncertaintyDetector.build_disclosure(
+                uncertainty_reading, engine_result or {}
+            )
+            if uncertainty_disclosure.disclosure_level != "none":
+                disclosure_instruction = self._build_uncertainty_instruction(
+                    uncertainty_disclosure
+                )
+                if disclosure_instruction:
+                    meaning = meaning + "\n" + disclosure_instruction
 
         return ResponseShape(
             meaning_instruction=meaning,
@@ -299,6 +324,7 @@ class AATIFResponseShaper:
             context_note=context_note,
             firmness=round(firmness, 3),
             psp_shaping=psp_shaping,
+            uncertainty_disclosure=uncertainty_disclosure,
         )
 
 
@@ -624,7 +650,56 @@ class AATIFResponseShaper:
 
         return "\n".join(sections)
 
+    # ═══════════════════════════════════════════════════════
+    #  Uncertainty disclosure instruction builder
+    # ═══════════════════════════════════════════════════════
 
+    @staticmethod
+    def _build_uncertainty_instruction(disclosure: UncertaintyDisclosure) -> str:
+        """Build uncertainty disclosure instruction for meaning_instruction.
+
+        Generates Arabic-language guidance for the LLM about what to
+        disclose when the system's confidence is low. STYLISTIC ONLY.
+
+        Disclosure levels:
+          mild:        briefly acknowledge limits
+          moderate:    explain what's uncertain
+          significant: full disclosure with what's needed
+        """
+        if disclosure.disclosure_level == "none":
+            return ""
+
+        sections = []
+
+        if disclosure.disclosure_level == "mild":
+            sections.append(
+                "في شوية عدم يقين بالموضوع — خلّ الرد يعكس هالشي بلطف. "
+                "لا تستخدم كلمات قطعية مثل (أكيد، بالتأكيد، مستحيل)."
+            )
+        elif disclosure.disclosure_level == "moderate":
+            sections.append(
+                "في عدم يقين ملحوظ — وضّح للشخص إن الجواب ممكن "
+                "ما يكون كامل أو دقيق ١٠٠٪."
+            )
+            if disclosure.what_unknown:
+                sections.append(f"اللي مش واضح: {disclosure.what_unknown}")
+            if disclosure.what_known:
+                sections.append(f"اللي نعرفه: {disclosure.what_known}")
+        elif disclosure.disclosure_level == "significant":
+            sections.append(
+                "في عدم يقين كبير — لازم توضح للشخص إن المعلومات ممكن "
+                "تكون ناقصة وتحتاج تأكيد."
+            )
+            if disclosure.what_unknown:
+                sections.append(f"اللي مش واضح: {disclosure.what_unknown}")
+            if disclosure.why_unknown:
+                sections.append(f"ليش: {disclosure.why_unknown}")
+            if disclosure.what_needed:
+                sections.append(f"اللي نحتاجه: {disclosure.what_needed}")
+            if disclosure.what_known:
+                sections.append(f"اللي نعرفه: {disclosure.what_known}")
+
+        return "\n".join(sections)
 
 
 # ═══════════════════════════════════════════════════════════

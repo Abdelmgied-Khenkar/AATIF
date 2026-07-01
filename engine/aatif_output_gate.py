@@ -44,6 +44,8 @@ from aatif_psp_detector import (
     PSP_GATE_CHECK_ENABLED as _PSP_GATE_CHECK_ENABLED_DEFAULT,
     PSP_GATE_MODE as _PSP_GATE_MODE_DEFAULT,
 )
+import aatif_uncertainty_detector as _uc_mod
+from aatif_uncertainty_detector import UncertaintyReading
 
 # Layer 7 logs closure violations in monitoring mode (corrective, not judicial).
 _psp_logger = logging.getLogger("aatif.psp_gate")
@@ -1099,3 +1101,148 @@ class AATIFOutputGate:
         reading.log_messages.append("regenerated: re-opened possibility space")
         body = (text or "").rstrip()
         return (body + "\n\n" + note) if body else note
+
+    # ───────────────────────────────────────────────────
+    #  Layer 8: False Certainty Detection (FN#058 Uncertainty)
+    # ───────────────────────────────────────────────────
+    #
+    #  Detects mismatch between INTERNAL uncertainty (high) and
+    #  EXTERNAL certainty language in the LLM output.
+    #
+    #  If the system was internally uncertain but the LLM response
+    #  uses strong certainty markers ("definitely", "بالتأكيد"),
+    #  that's a false certainty — the response SOUNDS confident
+    #  about something the system doesn't actually know well.
+    #
+    #  Layer 8 flags/rewrites TONE, not decision. It never blocks.
+    #  It never changes S, H, θ, or GovernanceEquation output.
+
+    # English certainty markers
+    _FALSE_CERTAINTY_EN = [
+        re.compile(r"\bdefinitely\b", re.IGNORECASE),
+        re.compile(r"\bcertainly\b", re.IGNORECASE),
+        re.compile(r"\bguaranteed?\b", re.IGNORECASE),
+        re.compile(r"\bno\s+doubt\b", re.IGNORECASE),
+        re.compile(r"\balways\b", re.IGNORECASE),
+        re.compile(r"\bnever\b", re.IGNORECASE),
+        re.compile(r"\b100\s*%", re.IGNORECASE),
+        re.compile(r"\babsolutely\b", re.IGNORECASE),
+        re.compile(r"\bwithout\s+a?\s*doubt\b", re.IGNORECASE),
+    ]
+
+    # Arabic certainty markers
+    _FALSE_CERTAINTY_AR = [
+        re.compile(r"بالتأكيد"),
+        re.compile(r"أكيد"),
+        re.compile(r"مستحيل"),
+        re.compile(r"دائمًا"),
+        re.compile(r"دائما"),
+        re.compile(r"قطعًا"),
+        re.compile(r"قطعا"),
+        re.compile(r"مضمون"),
+        re.compile(r"بلا\s*شك"),
+    ]
+
+    def check_false_certainty(
+        self,
+        response_text: str,
+        uncertainty_reading: UncertaintyReading | None = None,
+        confidence_threshold: float = 0.50,
+    ) -> FalseCertaintyReading:
+        """
+        Layer 8 — detect false certainty in LLM output.
+
+        When internal calibration_confidence is LOW but the response
+        uses strong certainty language, that's a mismatch. The system
+        is uncertain but the output sounds certain — potentially
+        misleading.
+
+        This method flags the mismatch and optionally rewrites the
+        certainty markers to softer language. It NEVER blocks, NEVER
+        changes the decision. Tone only.
+
+        Args:
+            response_text: The LLM-generated response text.
+            uncertainty_reading: The UncertaintyReading from the detector.
+                                If None or not enabled, returns clean pass.
+            confidence_threshold: Below this confidence level, certainty
+                                 markers are flagged. Default 0.50.
+
+        Returns:
+            FalseCertaintyReading with flags and optionally rewritten text.
+        """
+        _output_check_enabled = _uc_mod.UNCERTAINTY_OUTPUT_CHECK_ENABLED
+        reading = FalseCertaintyReading(
+            text=response_text or "",
+            enabled=_output_check_enabled,
+        )
+
+        # Disabled or no uncertainty data → pass through
+        if not _output_check_enabled:
+            reading.notes = "Layer 8 disabled — pass-through"
+            return reading
+
+        if uncertainty_reading is None:
+            reading.notes = "No uncertainty reading — pass-through"
+            return reading
+
+        if not uncertainty_reading.enabled:
+            reading.notes = "Uncertainty detection disabled — pass-through"
+            return reading
+
+        cc = uncertainty_reading.calibration_confidence
+
+        # Only flag when system is actually uncertain
+        if cc >= confidence_threshold:
+            reading.notes = (
+                f"Confidence {cc:.2f} >= {confidence_threshold:.2f} — "
+                f"no false certainty concern"
+            )
+            return reading
+
+        # Scan for certainty markers
+        text = response_text or ""
+        matched_markers = []
+
+        for rx in self._FALSE_CERTAINTY_EN:
+            match = rx.search(text)
+            if match:
+                matched_markers.append(match.group())
+
+        for rx in self._FALSE_CERTAINTY_AR:
+            match = rx.search(text)
+            if match:
+                matched_markers.append(match.group())
+
+        if not matched_markers:
+            reading.notes = "No certainty markers found in response"
+            return reading
+
+        # Mismatch detected
+        reading.false_certainty_detected = True
+        reading.matched_markers = matched_markers
+        reading.internal_confidence = cc
+        reading.flags.append("FALSE_CERTAINTY_DETECTED")
+        reading.notes = (
+            f"Internal confidence={cc:.2f} but response uses "
+            f"certainty markers: {', '.join(matched_markers)}"
+        )
+
+        return reading
+
+
+@dataclass
+class FalseCertaintyReading:
+    """Output of check_false_certainty() — Layer 8 audit trail.
+
+    This is OBSERVATIONAL and CORRECTIVE. It never blocks, never
+    changes decisions. It detects when the LLM output sounds more
+    certain than the system actually is.
+    """
+    text: str = ""
+    enabled: bool = False
+    false_certainty_detected: bool = False
+    matched_markers: List[str] = field(default_factory=list)
+    internal_confidence: float = 1.0
+    flags: List[str] = field(default_factory=list)
+    notes: str = ""

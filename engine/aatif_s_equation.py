@@ -91,6 +91,8 @@ from aatif_drift_detector import (
     DriftDetector, ConversationManager as DriftConversationManager,
     compute_h_eff, DRIFT_DETECTION_ENABLED,
 )
+import aatif_uncertainty_detector as _uc_mod
+from aatif_uncertainty_detector import UncertaintyDetector, UncertaintyReading
 
 
 # ---------------------------------------------------------------------------
@@ -972,6 +974,9 @@ class AATIFEngine:
         self.drift_detector = DriftDetector()
         self.drift_conversation_manager = DriftConversationManager()
         print("  FN#058 drift detector ready")
+        # Uncertainty/Calibration — observational confidence layer
+        self.uncertainty_detector = UncertaintyDetector()
+        print("  Uncertainty detector ready")
         print("[AATIF] Engine ready.\n")
 
     def compute(self, text: str, profile: str = "default",
@@ -1221,6 +1226,47 @@ class AATIFEngine:
         result["freeze_downgraded"] = freeze_downgraded
         result["jailbreak_escalated"] = jailbreak_escalated
         result["override_detected"] = override_detected
+
+        # UNCERTAINTY / CALIBRATION CONFIDENCE GATE
+        # Runs the UncertaintyDetector (observational) to compute
+        # calibration_confidence. If UNCERTAINTY_GATE_ENABLED and the
+        # decision is EXECUTE but confidence < ξ(d), escalate to CLARIFY.
+        # Escalation-only: never downgrades, never blocks independently.
+        # Single Mind: GovernanceEquation makes the decision, uncertainty
+        # just provides the signal.
+        uncertainty_reading = None
+        if _uc_mod.UNCERTAINTY_ENABLED:
+            uncertainty_reading = self.uncertainty_detector.detect(
+                result, domain=domain or "general"
+            )
+            result["uncertainty"] = {
+                "calibration_confidence": uncertainty_reading.calibration_confidence,
+                "xi_threshold": uncertainty_reading.xi_threshold,
+                "should_gate": uncertainty_reading.should_gate,
+                "should_abstain": uncertainty_reading.should_abstain,
+                "h_confidence": uncertainty_reading.h_confidence,
+                "i_confidence": uncertainty_reading.i_confidence,
+                "e_confidence": uncertainty_reading.e_confidence,
+                "coverage": uncertainty_reading.coverage,
+                "agreement": uncertainty_reading.agreement,
+                "evidence": uncertainty_reading.evidence,
+            }
+
+            # Confidence gate: EXECUTE → CLARIFY when confidence < ξ(d)
+            if (_uc_mod.UNCERTAINTY_GATE_ENABLED
+                    and uncertainty_reading.should_gate
+                    and result["decision"] == "EXECUTE"):
+                result["decision"] = "CLARIFY"
+                result["uncertainty"]["gate_applied"] = True
+                # Record in evidence for audit trail
+                cc = uncertainty_reading.calibration_confidence
+                xi = uncertainty_reading.xi_threshold
+                if "evidence" not in result:
+                    result["evidence"] = []
+                # Append to uncertainty evidence
+                result["uncertainty"]["evidence"].append(
+                    f"Confidence gate: {cc:.2f} < xi={xi:.2f} → EXECUTE→CLARIFY"
+                )
 
         # γ+ HYSTERESIS: stabilize decisions across conversation turns.
         # Applied AFTER all other decision logic (ambiguity, jailbreak, guard)
