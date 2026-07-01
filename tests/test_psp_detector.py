@@ -38,6 +38,7 @@ from aatif_psp_detector import (
     PSPState,
     next_psp_state,
     psp_should_deactivate,
+    apply_psp_transition,
     DEACTIVATION_TURNS_GENERAL,
     DEACTIVATION_TURNS_HIGH_STAKES,
 )
@@ -834,3 +835,120 @@ class TestFeatureFlagBehaviour:
         r = det.detect("should I rent or buy?",
                        domain_config=DomainPSPConfig.for_domain("general"))
         assert isinstance(r, PSPReading)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestReviewBugFixes — 3-model review consensus fixes (2026-06-30)
+# ═══════════════════════════════════════════════════════════════
+
+class TestReviewBugFixes:
+    """Tests for the P0 bugs identified by Grok, DeepSeek, and Gemini."""
+
+    # ── Bug fix #1 (DeepSeek): user_requested_closure sticky flag ──
+
+    def test_closure_flag_resets_on_closed(self):
+        """user_requested_closure must reset when state goes to CLOSED."""
+        ctx = PSPContext(state=PSPState.CLOSURE_REQUESTED,
+                         user_requested_closure=True)
+        new_state, reason = next_psp_state(
+            ctx.state, _reading(is_dp=False))
+        apply_psp_transition(ctx, new_state, reason, _reading(is_dp=False))
+        assert ctx.state is PSPState.CLOSED
+        assert ctx.user_requested_closure is False, \
+            "sticky flag must reset on CLOSED (DeepSeek bug)"
+
+    def test_closure_flag_resets_on_dormant(self):
+        """user_requested_closure must reset when state goes to DORMANT."""
+        ctx = PSPContext(state=PSPState.EXPLORING,
+                         user_requested_closure=True)
+        new_state, reason = next_psp_state(
+            ctx.state, _reading(is_dp=False),
+            topic_shift_signal=True)
+        apply_psp_transition(ctx, new_state, reason, _reading(is_dp=False))
+        # topic_shift → CLOSED, which resets the flag
+        assert ctx.user_requested_closure is False
+
+    def test_closure_flag_persists_during_exploring(self):
+        """Flag should only reset on CLOSED/DORMANT, not during active states."""
+        ctx = PSPContext(state=PSPState.EXPLORING,
+                         user_requested_closure=False)
+        apply_psp_transition(ctx, PSPState.NARROWING,
+                             "user_rejecting", _reading(is_dp=True))
+        assert ctx.state is PSPState.NARROWING
+        # Flag was already False, just verify it stays False
+        assert ctx.user_requested_closure is False
+
+    # ── Bug fix #2 (DeepSeek + Grok): CLOSURE_REQUESTED → EXPLORING ──
+
+    def test_closure_requested_reopens_on_new_decision(self):
+        """User requests closure then introduces new paths → reopen to EXPLORING."""
+        state, reason = next_psp_state(
+            PSPState.CLOSURE_REQUESTED,
+            _reading(is_dp=True, requested_closure=False),
+            user_turn_features="بس وش رايك بالخيار الثالث؟")
+        assert state is PSPState.EXPLORING
+        assert reason == "user_reopened_after_closure_request"
+
+    def test_closure_requested_stays_closed_if_still_requesting(self):
+        """If user still wants closure, don't reopen."""
+        state, reason = next_psp_state(
+            PSPState.CLOSURE_REQUESTED,
+            _reading(is_dp=True, requested_closure=True),
+            user_turn_features="just tell me which one already")
+        assert state is PSPState.CLOSURE_REQUESTED
+        assert reason == "user_requested_closure"
+
+    def test_closure_requested_delivers_when_quiet(self):
+        """No new decision signal → deliver closure (original behavior)."""
+        state, reason = next_psp_state(
+            PSPState.CLOSURE_REQUESTED,
+            _reading(is_dp=False, requested_closure=False))
+        assert state is PSPState.CLOSED
+        assert reason == "closure_delivered"
+
+    # ── Bug fix #3 (All 3): quiet_turns_count tracking ──
+
+    def test_quiet_turns_increment_on_non_decision(self):
+        """Quiet turns counter increments when no decision signal in active state."""
+        ctx = PSPContext(state=PSPState.EXPLORING, quiet_turns_count=0)
+        apply_psp_transition(ctx, PSPState.EXPLORING,
+                             "no_new_signal", _reading(is_dp=False))
+        assert ctx.quiet_turns_count == 1
+        apply_psp_transition(ctx, PSPState.EXPLORING,
+                             "no_new_signal", _reading(is_dp=False))
+        assert ctx.quiet_turns_count == 2
+
+    def test_quiet_turns_reset_on_decision_signal(self):
+        """Counter resets when a decision signal appears."""
+        ctx = PSPContext(state=PSPState.EXPLORING, quiet_turns_count=2)
+        apply_psp_transition(ctx, PSPState.EXPLORING,
+                             "still_exploring", _reading(is_dp=True))
+        assert ctx.quiet_turns_count == 0
+
+    def test_quiet_turns_reset_on_closed(self):
+        """Counter resets when state goes to CLOSED."""
+        ctx = PSPContext(state=PSPState.EXPLORING, quiet_turns_count=3)
+        apply_psp_transition(ctx, PSPState.CLOSED,
+                             "topic_shift", _reading(is_dp=False))
+        assert ctx.quiet_turns_count == 0
+
+    def test_quiet_turns_reset_on_detected(self):
+        """Counter resets when a new decision is DETECTED."""
+        ctx = PSPContext(state=PSPState.DORMANT, quiet_turns_count=0)
+        apply_psp_transition(ctx, PSPState.DETECTED,
+                             "decision_markers_found", _reading(is_dp=True))
+        assert ctx.quiet_turns_count == 0
+
+    def test_psp_context_has_quiet_turns_field(self):
+        """PSPContext must have the quiet_turns_count field (default 0)."""
+        ctx = PSPContext()
+        assert hasattr(ctx, "quiet_turns_count")
+        assert ctx.quiet_turns_count == 0
+
+    def test_apply_transition_updates_state_and_reason(self):
+        """apply_psp_transition must set both state and reason atomically."""
+        ctx = PSPContext(state=PSPState.DORMANT)
+        apply_psp_transition(ctx, PSPState.DETECTED,
+                             "decision_markers_found")
+        assert ctx.state is PSPState.DETECTED
+        assert ctx.last_transition_reason == "decision_markers_found"

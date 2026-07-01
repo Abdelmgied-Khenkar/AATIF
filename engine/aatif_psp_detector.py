@@ -337,6 +337,8 @@ class PSPContext:
     last_decision_marker_turn_index: int = -1
     domain_profile: str = DEFAULT_PSP_PROFILE
     last_transition_reason: Optional[str] = None
+    # ── FN#070 v1.0.1 bug fixes (3-model review consensus 2026-06-30) ──
+    quiet_turns_count: int = 0  # tracks consecutive non-decision turns for decay
 
 
 @dataclass
@@ -837,8 +839,12 @@ def next_psp_state(current_state: PSPState,
     if requested_closure and (is_dp or current_state != PSPState.DORMANT):
         return PSPState.CLOSURE_REQUESTED, "user_requested_closure"
 
-    # ── CLOSURE_REQUESTED → CLOSED once closure has been delivered ──
+    # ── CLOSURE_REQUESTED handling ──
+    # Bug fix (DeepSeek review): user can reopen after requesting closure
+    # e.g. "قررلي" → then "بس وش رايك بالخيار الثالث؟"
     if current_state == PSPState.CLOSURE_REQUESTED:
+        if is_dp and not requested_closure:
+            return PSPState.EXPLORING, "user_reopened_after_closure_request"
         return PSPState.CLOSED, "closure_delivered"
 
     if current_state == PSPState.DORMANT:
@@ -899,6 +905,58 @@ def psp_should_deactivate(consecutive_non_decision_turns: int,
     else:
         limit = DEACTIVATION_TURNS_GENERAL
     return consecutive_non_decision_turns >= limit
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Context transition applicator  (FN#070 v1.0.1 — 3-model review)
+# ═══════════════════════════════════════════════════════════════
+
+def apply_psp_transition(context: PSPContext,
+                         new_state: PSPState,
+                         reason: str,
+                         psp_reading: Any = None) -> None:
+    """
+    Apply a state transition to PSPContext with proper flag management.
+
+    Created in response to 3-model review consensus (2026-06-30):
+      - Grok: state management is fragile, encapsulate mutation
+      - DeepSeek: user_requested_closure sticky flag never reset
+      - All 3: quiet-turn decay needs a counter, not binary logic
+
+    The caller runs ``next_psp_state()`` to get the new state, then calls
+    this to apply it. This ensures flag resets and counter tracking are
+    atomic with state assignment — preventing the desync bugs all 3
+    reviewers flagged.
+
+    Parameters
+    ----------
+    context : PSPContext
+        The context to mutate in place.
+    new_state : PSPState
+        Result of ``next_psp_state()``.
+    reason : str
+        Transition reason from ``next_psp_state()``.
+    psp_reading : PSPReading | dict | None
+        This turn's reading — used to decide whether to reset the quiet counter.
+    """
+    context.state = new_state
+    context.last_transition_reason = reason
+
+    # ── Bug fix #1 (DeepSeek): reset sticky closure flag ──
+    # user_requested_closure must reset when the decision context ends.
+    if new_state in (PSPState.CLOSED, PSPState.DORMANT):
+        context.user_requested_closure = False
+        context.quiet_turns_count = 0
+
+    # ── Bug fix #2 (All 3): track quiet turns for decay ──
+    is_dp = bool(_get(psp_reading, "is_decision_point", False)) if psp_reading else False
+    if is_dp or new_state == PSPState.DETECTED:
+        # Active signal → reset quiet counter
+        context.quiet_turns_count = 0
+    elif new_state not in (PSPState.CLOSED, PSPState.DORMANT):
+        # In an active state but no decision signal → increment quiet counter
+        if not is_dp:
+            context.quiet_turns_count += 1
 
 
 # ═══════════════════════════════════════════════════════════════
