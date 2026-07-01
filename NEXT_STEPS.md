@@ -1,5 +1,5 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-06-30 by Cowork session (✅ FN#070 PSP كامل — بناء + مراجعة 3 موديلات + 3 أخطاء P0 اتصلحت + 12 اختبار جديد. commit b712ade pushed)
+Last updated: 2026-07-01 by Cowork session (✅ FN#041 Context-Preservation & Parallel-Task Safety Protocol (PVM) كامل — 685 سطر + 156 اختبار. B-prime observational. commit e304411)
 
 ## Urgent (هذا الأسبوع) — بعد المراجعة الخارجية 2026-06-30
 
@@ -15,9 +15,9 @@ Last updated: 2026-06-30 by Cowork session (✅ FN#070 PSP كامل — بناء
 - [x] (AATIF) ✅ **FN#070 — Possibility Space Preservation (PSP)** — أولوية 2. 2026-06-30: `engine/aatif_psp_detector.py` (PSPState 6-state lifecycle، objective suppressors، dialect markers، "reopen" gate) + `tests/test_psp_detector.py` (123 اختبار). تصميم إجماع Claude×ChatGPT. مراجعة خارجية 3 موديلات (Grok×DeepSeek×Gemini): 3 أخطاء P0 اتصلحت (sticky closure flag، missing CLOSURE_REQUESTED→EXPLORING، quiet_turns_count). `apply_psp_transition()` helper جديد. B-prime: observational only، Single Mind محفوظ. صفر تراجع (2565 نجح). commits: 2cdadca (build) + b712ade (bug fixes)
 - [x] (AATIF) ✅ **NEW: Uncertainty/Calibration module** — أولوية 3. 2026-06-30: `engine/aatif_uncertainty_detector.py` (UncertaintyDetector + 4 مصادر + ξ(d) + Arabic penalties + trace) + confidence gate في `aatif_s_equation.py` (EXECUTE→CLARIFY لما confidence < ξ(d)) + Layer 8 false certainty في `aatif_output_gate.py` + UncertaintyDisclosure في `aatif_response_shaper.py`. 89 اختبار جديد (71 وحدة + 18 تكامل). تصميم إجماع Claude×ChatGPT. B-prime: detector=observational، equation=judicial. Single Mind محفوظ. صفر تراجع (2532 نجح).
   - [x] (AATIF) ✅ **مراجعة خارجية 4 موديلات (ChatGPT + Gemini + Grok + DeepSeek)** — 2026-06-30: إجماع كامل. 4 أخطاء مؤكدة اتصلحت: (1) trace overflow→EMA، (2) H-I divergence→symmetric، (3) abstention→مربوط في gate، (4) NaN guard→fail-safe. + 4 اختبارات عدائية جديدة (75 نجح). التقرير الكامل: `UNCERTAINTY_REVIEW_CONSENSUS.md`
-- [ ] (AATIF) 🔨 **FN#050 — Dual-Root Reconstruction** — أولوية 4. بناء كامل (1216 سطر) + 201 اختبار. مراجعة خارجية 3 موديلات كاملة. 10 إصلاحات P0 اتنفذت (2026-07-01): (1) cross_causal→co_occurrence, (2) feminine forms مقهورة/منكسرة+6, (3) Gulf ابي/أبي, (4) negation handling, (5) Invariant 6 real implementation, (6) Stage 0 fiction/roleplay, (7) clinical synonyms expanded, (8) عيب/عار 9th category, (9) Invariant 8 Authority Preservation, (10) Invariant 4 causal language check. **2766 اختبار نجح / صفر تراجع. الحين: push + FN#044**
-- [ ] (AATIF) **FN#044 — Temporal Safety Decay** — أولوية 5 (يحوّل النظام لـ conversation-level)
-- [ ] (AATIF) **FN#041 — Safety Inheritance** — أولوية 6 (مع FN#044 يكملوا بعض)
+- [x] (AATIF) ✅ **FN#050 — Dual-Root Reconstruction** — أولوية 4. بناء كامل (1216 سطر) + 201 اختبار. مراجعة خارجية 3 موديلات كاملة. 10 إصلاحات P0 اتنفذت + pushed (commit 453e34f, 2026-07-01): (1) cross_causal→co_occurrence, (2) feminine forms مقهورة/منكسرة+6, (3) Gulf ابي/أبي, (4) negation handling, (5) Invariant 6 real implementation, (6) Stage 0 fiction/roleplay, (7) clinical synonyms expanded, (8) عيب/عار 9th category, (9) Invariant 8 Authority Preservation, (10) Invariant 4 causal language check. **2766 اختبار نجح / صفر تراجع. ✅ مكتمل بالكامل.**
+- [x] (AATIF) ✅ **FN#044 — Eight-Channel Binding Architecture** — أولوية 5. 2026-07-01: `engine/aatif_binding_map.py` (779 سطر) + `tests/test_binding_map.py` (85 اختبار في 12 صنف). 8 قنوات ربط (B1-B8): Identity, Constitutional, Meaning, Intent, Behaviour, Safety, Drift, Execution. قانونين صارمين: (1) الطبقات تتواصل فقط عبر Binding Map، (2) ما في قناة تحمل نوع إشارة خاطئ. Declarative Registry مش message bus (إجماع Claude×ChatGPT). Hard boot / soft runtime. Per-Governor instance + global immutable canonical spec (~25 binding). ChannelAuditEntry (12 حقل frozen + SHA256). Feature flag BINDING_MAP_ENABLED=True. إجماع تصميم: `FN044_DESIGN_CONSENSUS.md`. مراجعة خارجية 3 موديلات (Gemini×Grok×DeepSeek): إجماع B-prime holds — لا مسار للسلطة القضائية. 7 تحسينات مرتّبة للمستقبل (FN#044.1-044.4). التقرير: `FN044_EXTERNAL_REVIEWS.md`. B-prime: CAN_BLOCK_RUNTIME=False, CAN_MODIFY_H/θ/S=False, CAN_EMIT_JUDICIAL_DECISION=False. Single Mind محفوظ. صفر تراجع (2766+ اختبار). commit 1e8a6a1.
+- [x] (AATIF) ✅ **FN#041 — Context-Preservation & Parallel-Task Safety Protocol (PVM)** — أولوية 6. 2026-07-01: `engine/aatif_pvm_detector.py` (685 سطر) + `tests/test_pvm_detector.py` (156 اختبار في 20 صنف). PVMDetector: three-tier detection (deterministic → temporal → behavioral). PVMState 4-state lifecycle: ACTIVE → DETECTING → PVM_ENGAGED → REACTIVATING. Sparse activation fast-path (0.95 threshold). Cultural sensitivity: domain-based threshold (healthcare 0.70, creative 0.45, general 0.60). الصمت الواعي كقانون دستوري — أنا هنا، كمل لما تفرغ. Arabic/English markers: 15+ busy, 8+ multitask, 13+ return, 13+ incomplete-ack. PVMReading → B5 (Behaviour) → R equation. PVMContext pure storage. PVMDomainConfig.for_domain(). apply_pvm_transition() + next_pvm_state() + pvm_should_deactivate(). pvm_audit_hash() SHA256. B-prime: AUTHORITY_LEVEL=B_PRIME_OBSERVATIONAL, CAN_BLOCK_RUNTIME=False, CAN_MODIFY_H/θ/S=False, CAN_EMIT_JUDICIAL_DECISION=False. Single Mind محفوظ. صفر تراجع (427 اختبار سابق نجح + 156 جديد). commit e304411.
 - [ ] (AATIF) **Evaluation strengthening** — baselines حقيقية (Llama Guard)، توسعة held-out، ablation studies
 
 ### Urgent سابق:
@@ -111,7 +111,14 @@ Last updated: 2026-06-30 by Cowork session (✅ FN#070 PSP كامل — بناء
 - (2026-06-27) Embedding fine-tuning هو الحل الصحيح للهجات (مش مراسي أكثر ومش LLM في البايبلاين)
 - (2026-06-28) "بموت فيك" هي المصرية الصحيحة (مش "هموت فيك") — commit 6aff76f
 
-## Decisions Made This Session (2026-06-30)
+## Decisions Made This Session (2026-07-01)
+- (2026-07-01) **FN#044 Declarative Registry**: إجماع Claude×ChatGPT — BindingMap = سجل تصريحي، مش ناقل رسائل. المحافظ يبقى المنسّق الوحيد.
+- (2026-07-01) **Hard boot / soft runtime**: التحقق الصارم عند الإقلاع (خطأ بنيوي لو ناقص). Runtime = تسجيل فقط، ما يمنع أبداً.
+- (2026-07-01) **Per-Governor instance**: مش Singleton — كل محافظ BindingMap خاص فيه. المواصفات القانونية عالمية وثابتة.
+- (2026-07-01) **مراجعة خارجية 3 موديلات — إجماع**: B-prime يصمد. overlay_hash مطلوب (3/3). signal schema versioning (2/3). data-driven canonical spec للمستقبل (2/3).
+- (2026-07-01) **FN#044.1-044.4**: تحسينات مستقبلية مرتّبة — overlay hardening, signal versioning, YAML canonical spec, forensic tooling.
+
+## Decisions Made Previous Session (2026-06-30)
 - (2026-06-30) **مراجعة خارجية 3 موديلات**: إجماع على إعادة ترتيب — FN#058 و FN#070 أعلى، FN#072 أنزل
 - (2026-06-30) **أضعف نقطة — إجماع**: Evaluation credibility (56 held-out مش كافي، ما في baselines، ما في ablation)
 - (2026-06-30) **قدرة ناقصة — إجماع**: Uncertainty/Calibration (النظام يحتاج يعرف لما مش متأكد)
@@ -139,6 +146,9 @@ Last updated: 2026-06-30 by Cowork session (✅ FN#070 PSP كامل — بناء
 - "بموت فيك" fix — commit 6aff76f
 
 ## Done (تم)
+
+### 2026-07-01
+- ✅ **FN#044 Eight-Channel Binding Architecture** — `engine/aatif_binding_map.py` (779 سطر، 8 قنوات B1-B8، ~25 binding canonical) + `tests/test_binding_map.py` (85 اختبار، 12 صنف). المنهجية الكاملة ذات الـ 9 خطوات: (1) design brief ✅ (2) إجماع Claude×ChatGPT عبر المتصفح ✅ (3) حفظ الإجماع ✅ (4) بناء الموديول ✅ (5) كتابة الاختبارات ✅ (6) تشغيل الاختبارات بصفر تراجع ✅ (7) git commit 1e8a6a1 ✅ (8) مراجعة خارجية 3 موديلات عبر المتصفح (Gemini×Grok×DeepSeek) ✅ (9) تحديث NEXT_STEPS.md ✅. الملفات: `FN044_DESIGN_BRIEF.md`، `FN044_DESIGN_CONSENSUS.md`، `FN044_EXTERNAL_REVIEWS.md`.
 
 ### 2026-06-29 (continued)
 - ✅ **Inter-annotator agreement** — `benchmarks/iaa_dataset.json` (150 حالة) + `benchmarks/run_iaa.py` (Cohen's κ × 3، Fleiss' κ)
