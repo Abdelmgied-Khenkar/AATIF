@@ -15,9 +15,18 @@ Critical Design Rule (Single Mind):
 
   LBH is not compassion. LBH is structural respect.
 
-  "Assume the human is trying -- unless explicit evidence proves otherwise."
-  "Failure is NEVER attributed to lack of will, effort, or character
-   without verified proof."
+  LBH is PURELY PATTERN-BASED. It scans DRAFT OUTPUT for stylistic
+  markers only -- it does NOT inspect user input and CANNOT verify any
+  truth claim about the human. It therefore makes NO evidentiary
+  exceptions (no "unless proven otherwise", no "without verified proof"):
+  such exceptions are unoperationalizable because LBH never sees the
+  evidence. It detects patterns, it does not adjudicate truth.
+
+  "Draft output SHOULD NOT contain patterns of deficit attribution,
+   sermonizing, or elite projection."
+  "Draft output SHOULD NOT frame failure as a lack of will, effort, or
+   character -- LBH flags this stylistic pattern; it does not decide
+   whether any such claim is factually true."
 
 This module scans DRAFT OUTPUT (what the LLM is about to say), NOT user
 input. The markers are things the AI should NOT say to the human.
@@ -70,6 +79,32 @@ CAN_EMIT_JUDICIAL_DECISION = False
 
 
 # =====================================================================
+#  Isolation Contract (P0-B -- non-interference guarantee)
+# =====================================================================
+#
+#  LBHReading is STYLISTIC (B5). It MUST NEVER be consumed by any safety
+#  module. The modules below must never import, read, or route an
+#  LBHReading into a safety decision (S / H / theta / gate). Every
+#  LBHReading also carries a runtime tag (`_isolation_marker`) that any
+#  safety module can assert against to prove no LBH value reached it.
+
+ISOLATION_MARKER = "B5_ONLY_NOT_FOR_SAFETY"
+
+ISOLATION_TARGETS = frozenset([
+    "GovernanceEquation",
+    "SafetyGate",
+    "HarmEstimator",
+    "aatif_s_equation",
+    "aatif_harm_scorer",
+])
+
+# Bounded rewrite pass (P0-E) -- LBH must run at most ONCE per generation
+# cycle. Recommendations may cause a reframe; that reframe must NOT be
+# fed back into LBH, or a reframe->detect->reframe loop becomes possible.
+MAX_LBH_REWRITE_PASSES = 1
+
+
+# =====================================================================
 #  LBH Violation Types  (FN#054 -- five prohibitions)
 # =====================================================================
 
@@ -93,6 +128,11 @@ MULTI_MARKER_COMPOUND_BONUS = 0.15     # each additional marker adds confidence
 MAX_CONFIDENCE = 0.95
 VIOLATION_SCORE_THRESHOLD = 0.40       # below this, structural respect is maintained
 EDUCATION_DOMAIN_MODIFIER = -0.10      # education domain is slightly more tolerant
+
+# Echo-chamber guard (P1-1): if draft mirrors the user's own words,
+# don't penalize safe reframing as if the AI were sermonizing.
+ECHO_CHAMBER_OVERLAP_THRESHOLD = 0.70  # token overlap above this -> discount
+ECHO_CHAMBER_DISCOUNT = 0.50           # halve severities on high overlap
 
 # Per-violation-type base severity (some are worse than others)
 VIOLATION_SEVERITY: Dict[LBHViolationType, float] = {
@@ -450,9 +490,9 @@ REFRAME_BY_TYPE: Dict[LBHViolationType, str] = {
         "or ask what the human needs. Reduce pressure before suggesting growth."
     ),
     LBHViolationType.DEFICIT_ATTRIBUTION: (
-        "Remove blame framing. Failure is NEVER attributed to lack of will, "
-        "effort, or character without verified proof. Acknowledge that the "
-        "human is trying -- the system has no evidence otherwise."
+        "Remove blame framing. Draft output should not frame failure as a "
+        "lack of will, effort, or character. Rewrite to assume the human is "
+        "trying and to acknowledge that structural barriers may exist."
     ),
     LBHViolationType.ELITE_PROJECTION: (
         "Remove elite experience projection. Not everyone has the same "
@@ -501,12 +541,31 @@ class LBHReading:
     sermonizing, deficit-attribution, or other LBH violations and what
     kind of reframe is recommended. It never blocks, never modifies
     H/theta/S, and never makes safety decisions.
+
+    ISOLATION CONTRACT (P0-B):
+      This dataclass MUST NOT be consumed by GovernanceEquation,
+      SafetyGate, or HarmEstimator (see ISOLATION_TARGETS). The
+      ``_isolation_marker`` field is a runtime tag any safety module can
+      assert against to prove no LBH value ever reached a safety path.
+
+    BOUNDED REWRITE (P0-E):
+      ``rewrite_pass_count`` records how many LBH passes have run this
+      generation cycle. The system MUST NOT call LBH more than
+      MAX_LBH_REWRITE_PASSES (== 1) time per cycle -- a reframe driven by
+      an LBHReading must never be re-scanned by LBH.
     """
     violations_detected: List[LBHViolation]
     overall_score: float                     # [0,1] where 0=respectful, 1=severely sermonizing
     structural_respect_maintained: bool      # True when overall_score < threshold
     recommendations: List[str]              # what the response should do instead
     evidence: List[str] = field(default_factory=list)
+    # -- P0-E: bounded rewrite pass guard -----------------------------
+    rewrite_pass_count: int = 0
+    # -- P0-B: runtime non-interference tag ---------------------------
+    #  STYLISTIC-ONLY marker. Any safety module can assert this value is
+    #  never present in its inputs. Leading underscore keeps it out of
+    #  the "observational data" field contract while remaining inspectable.
+    _isolation_marker: str = ISOLATION_MARKER
 
 
 # =====================================================================
@@ -561,7 +620,8 @@ class LBHDetector:
 
     def detect(self,
                draft: Any,
-               domain: Optional[str] = None) -> LBHReading:
+               domain: Optional[str] = None,
+               user_input_text: Optional[str] = None) -> LBHReading:
         """
         Scan draft output for LBH violations.
 
@@ -575,6 +635,14 @@ class LBHDetector:
             domain has slightly different thresholds -- it is more
             tolerant of some motivational language in pedagogical
             contexts, but never tolerant of deficit attribution.
+        user_input_text : str | None
+            The user's original input, if available. Used ONLY to guard
+            against the echo-chamber failure mode (P1-1): if the draft
+            largely mirrors the user's own words (token overlap > 0.70),
+            the draft is likely safely reframing / quoting the user
+            rather than sermonizing at them, so every violation's
+            severity is discounted by 50%. This never touches safety --
+            it only softens a STYLISTIC penalty.
 
         Returns
         -------
@@ -650,6 +718,21 @@ class LBHDetector:
                 evidence=evidence,
             )
 
+        # -- P1-1: echo-chamber discount -------------------------------
+        #  If the draft largely mirrors the user's own input (quoting or
+        #  safe reframing), do not penalize it as if the AI were
+        #  sermonizing. Discount every violation's severity by 50%.
+        if user_input_text:
+            overlap = self._token_overlap(text, user_input_text)
+            if overlap > ECHO_CHAMBER_OVERLAP_THRESHOLD:
+                for v in violations:
+                    v.severity = round(v.severity * ECHO_CHAMBER_DISCOUNT, 3)
+                evidence.append(
+                    f"high_input_overlap_discount_applied: overlap={overlap:.2f} "
+                    f"> {ECHO_CHAMBER_OVERLAP_THRESHOLD:.2f}, severities x"
+                    f"{ECHO_CHAMBER_DISCOUNT}"
+                )
+
         # Overall score: weighted average of severities, compounded
         # by number of distinct violation types
         total_severity = sum(v.severity for v in violations)
@@ -720,6 +803,20 @@ class LBHDetector:
         hits = [m for m in markers_en if m in low]
         hits += [m for m in markers_ar if normalize_arabic(m) in norm]
         return hits
+
+    @staticmethod
+    def _token_overlap(draft_text: str, user_input_text: str) -> float:
+        """
+        Fraction of the DRAFT's distinct tokens that also appear in the
+        user's input. Arabic-normalized + lowercased. Returns 0.0 when
+        either side has no tokens. Measures how much the draft mirrors
+        the user (echo-chamber guard, P1-1).
+        """
+        draft_tokens = set(normalize_arabic(draft_text).lower().split())
+        input_tokens = set(normalize_arabic(user_input_text).lower().split())
+        if not draft_tokens or not input_tokens:
+            return 0.0
+        return len(draft_tokens & input_tokens) / len(draft_tokens)
 
 
 # =====================================================================
@@ -919,6 +1016,10 @@ __all__ = [
     "CAN_MODIFY_THETA",
     "CAN_MODIFY_S",
     "CAN_EMIT_JUDICIAL_DECISION",
+    # Isolation contract (P0-B) + bounded rewrite (P0-E)
+    "ISOLATION_MARKER",
+    "ISOLATION_TARGETS",
+    "MAX_LBH_REWRITE_PASSES",
     # Violation type enum
     "LBHViolationType",
     # Constants
@@ -928,6 +1029,8 @@ __all__ = [
     "MAX_CONFIDENCE",
     "VIOLATION_SCORE_THRESHOLD",
     "EDUCATION_DOMAIN_MODIFIER",
+    "ECHO_CHAMBER_OVERLAP_THRESHOLD",
+    "ECHO_CHAMBER_DISCOUNT",
     "VIOLATION_SEVERITY",
     # Marker lists
     "SERMONIZING_MARKERS_AR",

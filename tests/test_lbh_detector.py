@@ -40,6 +40,13 @@ from aatif_lbh_detector import (
     CAN_MODIFY_THETA,
     CAN_MODIFY_S,
     CAN_EMIT_JUDICIAL_DECISION,
+    # Isolation contract (P0-B) + bounded rewrite (P0-E)
+    ISOLATION_MARKER,
+    ISOLATION_TARGETS,
+    MAX_LBH_REWRITE_PASSES,
+    # Echo-chamber guard (P1-1)
+    ECHO_CHAMBER_OVERLAP_THRESHOLD,
+    ECHO_CHAMBER_DISCOUNT,
     # Feature flags
     LBH_ENABLED,
     LBH_MONITOR_ONLY,
@@ -756,12 +763,19 @@ class TestSecurityNonSuppression:
         assert isinstance(r, LBHReading)
 
     def test_lbh_reading_fields_are_observational_only(self):
-        """LBHReading must contain ONLY observational data fields."""
+        """LBHReading must contain ONLY observational data fields.
+
+        Also permits the isolation/bounded-rewrite bookkeeping fields
+        added by the P0 fixes (_isolation_marker, rewrite_pass_count) --
+        these are stylistic/audit tags, not safety inputs.
+        """
         from dataclasses import fields as dc_fields
         reading_fields = {f.name for f in dc_fields(LBHReading)}
         allowed = {
             "violations_detected", "overall_score",
             "structural_respect_maintained", "recommendations", "evidence",
+            # P0-E bounded rewrite + P0-B isolation tag
+            "rewrite_pass_count", "_isolation_marker",
         }
         assert reading_fields == allowed, (
             f"LBHReading has unexpected fields: {reading_fields - allowed}"
@@ -910,3 +924,131 @@ class TestMultiViolation:
         r = detector.detect("You just need to work harder and believe in yourself")
         assert _has_vtype(r, LBHViolationType.SERMONIZING)
         assert _has_vtype(r, LBHViolationType.DEFICIT_ATTRIBUTION)
+
+
+# =================================================================
+#  TestIsolationContract -- P0-B non-interference guarantee
+# =================================================================
+
+class TestIsolationContract:
+    """P0-B: LBHReading must carry a runtime isolation marker and the
+    module must declare which safety targets may never consume it."""
+
+    @pytest.fixture
+    def detector(self):
+        return LBHDetector()
+
+    def test_isolation_marker_constant_value(self):
+        """ISOLATION_MARKER must be the documented stylistic-only tag."""
+        assert ISOLATION_MARKER == "B5_ONLY_NOT_FOR_SAFETY"
+
+    def test_reading_has_isolation_marker_field(self):
+        """Every LBHReading must expose an _isolation_marker field."""
+        from dataclasses import fields as dc_fields
+        names = {f.name for f in dc_fields(LBHReading)}
+        assert "_isolation_marker" in names
+
+    def test_detect_populates_isolation_marker(self, detector):
+        """detect() output must carry the isolation marker (default path)."""
+        r = detector.detect("You just need to work harder and believe in yourself")
+        assert r._isolation_marker == ISOLATION_MARKER
+
+    def test_isolation_marker_on_clean_reading(self, detector):
+        """Even a clean/fast-path reading carries the isolation marker."""
+        r = detector.detect("The capital of France is Paris.")
+        assert r._isolation_marker == "B5_ONLY_NOT_FOR_SAFETY"
+
+    def test_isolation_targets_declared(self):
+        """ISOLATION_TARGETS must name the safety modules that must never
+        consume an LBHReading."""
+        assert isinstance(ISOLATION_TARGETS, frozenset)
+        expected = {
+            "GovernanceEquation", "SafetyGate", "HarmEstimator",
+            "aatif_s_equation", "aatif_harm_scorer",
+        }
+        assert expected.issubset(ISOLATION_TARGETS)
+
+
+# =================================================================
+#  TestBoundedRewrite -- P0-E infinite-loop guard
+# =================================================================
+
+class TestBoundedRewrite:
+    """P0-E: LBH must run at most once per generation cycle."""
+
+    @pytest.fixture
+    def detector(self):
+        return LBHDetector()
+
+    def test_max_rewrite_passes_is_one(self):
+        """MAX_LBH_REWRITE_PASSES must equal 1."""
+        assert MAX_LBH_REWRITE_PASSES == 1
+
+    def test_reading_has_rewrite_pass_count_field(self):
+        """Every LBHReading must expose a rewrite_pass_count field."""
+        from dataclasses import fields as dc_fields
+        names = {f.name for f in dc_fields(LBHReading)}
+        assert "rewrite_pass_count" in names
+
+    def test_rewrite_pass_count_default_is_int(self, detector):
+        """rewrite_pass_count must be an int and default within bounds."""
+        r = detector.detect("You just need to work harder and believe in yourself")
+        assert isinstance(r.rewrite_pass_count, int)
+        assert r.rewrite_pass_count <= MAX_LBH_REWRITE_PASSES
+
+
+# =================================================================
+#  TestEchoChamberDiscount -- P1-1 safe-reframing guard
+# =================================================================
+
+class TestEchoChamberDiscount:
+    """P1-1: when the draft mirrors the user's own words, violation
+    severities are discounted so safe reframing is not penalized."""
+
+    @pytest.fixture
+    def detector(self):
+        return LBHDetector()
+
+    def test_thresholds_configured(self):
+        """Echo-chamber constants must match the documented contract."""
+        assert ECHO_CHAMBER_OVERLAP_THRESHOLD == pytest.approx(0.70)
+        assert ECHO_CHAMBER_DISCOUNT == pytest.approx(0.50)
+
+    def test_high_overlap_applies_discount(self, detector):
+        """High input overlap (>0.70) halves severities vs no-overlap."""
+        draft = "You just need to work harder and believe in yourself"
+        # user_input identical -> overlap 1.0 -> discount applies
+        r_discounted = detector.detect(draft, user_input_text=draft)
+        r_baseline = detector.detect(draft)
+
+        assert any(
+            "high_input_overlap_discount_applied" in e
+            for e in r_discounted.evidence
+        ), "discount note must appear in evidence"
+        # Discounted score must be strictly lower than the un-discounted one.
+        assert r_discounted.overall_score < r_baseline.overall_score
+        # Each violation severity should be ~half the baseline severity.
+        base_sev = {v.violation_type: v.severity for v in r_baseline.violations_detected}
+        for v in r_discounted.violations_detected:
+            assert v.severity == pytest.approx(
+                round(base_sev[v.violation_type] * ECHO_CHAMBER_DISCOUNT, 3)
+            )
+
+    def test_low_overlap_no_discount(self, detector):
+        """Unrelated user input (low overlap) must NOT trigger the discount."""
+        draft = "You just need to work harder and believe in yourself"
+        r = detector.detect(draft, user_input_text="ما هي عاصمة اليابان")
+        assert not any(
+            "high_input_overlap_discount_applied" in e for e in r.evidence
+        )
+
+    def test_no_user_input_no_discount(self, detector):
+        """Omitting user_input_text leaves scoring unchanged."""
+        draft = "You just need to work harder and believe in yourself"
+        r_none = detector.detect(draft)
+        r_explicit_none = detector.detect(draft, user_input_text=None)
+        assert r_none.overall_score == r_explicit_none.overall_score
+        assert not any(
+            "high_input_overlap_discount_applied" in e
+            for e in r_none.evidence
+        )
