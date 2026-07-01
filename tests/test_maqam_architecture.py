@@ -804,3 +804,89 @@ class TestIntegration:
         assert reading.detected_maqam == MaqamType.NEUTRAL
         assert reading.activated is False
         assert reading.confidence_band == ConfidenceBand.NONE
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  P0 FIX TESTS — Gemini Review
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestP0GulfNegation:
+    """P0 #1: Dialect-aware negation — 'موب' must block markers."""
+
+    def test_mawb_negates_sadness(self):
+        """'موب حزين' (I'm not sad) must NOT trigger SADNESS."""
+        reading = detect_maqam("موب حزين أنا بخير الحمدلله يعطيك العافية")
+        # Either NEUTRAL (if only sad marker blocked) or WARMTH/GRATITUDE
+        assert reading.detected_maqam != MaqamType.SADNESS
+
+    def test_mawb_negates_frustration(self):
+        """'موب زعلان' (I'm not upset) must NOT trigger FRUSTRATION."""
+        reading = detect_maqam("موب زعلان بس أبي أفهم الموضوع أبي أعرف ليش")
+        assert reading.detected_maqam != MaqamType.FRUSTRATION
+
+    def test_mawb_in_negation_prefixes(self):
+        """Verify 'موب ' is in the negation prefixes tuple."""
+        from engine.aatif_maqam_architecture import NEGATION_PREFIXES_AR
+        assert any("موب" in neg for neg in NEGATION_PREFIXES_AR)
+
+    def test_is_negated_with_mawb(self):
+        """Direct test of _is_negated with موب prefix."""
+        from engine.aatif_maqam_architecture import _is_negated
+        assert _is_negated("موب حزين", "حزين") is True
+
+    def test_existing_negations_still_work(self):
+        """Ensure existing Gulf negations (مو, مش, ماني) still work."""
+        from engine.aatif_maqam_architecture import _is_negated
+        assert _is_negated("مو حزين", "حزين") is True
+        assert _is_negated("مش حزين", "حزين") is True
+        assert _is_negated("ماني حزين", "حزين") is True
+
+
+class TestP0ShortTextAqdDampener:
+    """P0 #2: Short-text Aqd dampener — prevent inflated cadence on short text."""
+
+    def test_single_word_exclamation_flat(self):
+        """Single word with ! must get FLAT cadence, not BOUNCY/STACCATO."""
+        reading = detect_maqam("Thanks!")
+        assert reading.aqd.cadence_type == CadenceType.FLAT
+
+    def test_two_word_exclamation_dampened_punct(self):
+        """Short text punct_density must be dampened below undampened value."""
+        reading = detect_maqam("Great job!")
+        # 2 words / 15 = 0.133 dampening factor
+        # Without dampener: punct_density would be min(1/3, 1) = 0.333
+        # With dampener: 0.333 * 0.133 ≈ 0.044
+        assert reading.aqd.punctuation_density < 0.15
+
+    def test_short_arabic_flat(self):
+        """Short Arabic text must get FLAT cadence."""
+        reading = detect_maqam("شكرا!")
+        assert reading.aqd.cadence_type == CadenceType.FLAT
+
+    def test_long_text_not_dampened(self):
+        """Text with 15+ words should NOT be dampened — cadence determined normally."""
+        long_text = (
+            "I really appreciate all the effort you put into this project. "
+            "It means so much to me and the entire team. Thank you!"
+        )
+        reading = detect_maqam(long_text)
+        # This has 20+ words and multiple sentences — not dampened
+        # Cadence should be determined by actual structure, not forced FLAT
+        assert reading.aqd.punctuation_density > 0  # non-zero because there's a !
+
+    def test_single_sentence_forced_flat(self):
+        """Even a moderately long single sentence gets FLAT cadence."""
+        text = "I am feeling quite happy today and everything is going well"
+        reading = detect_maqam(text)
+        # Single sentence (no . ! ? delimiters) → is_short_text by sentence count
+        assert reading.aqd.cadence_type == CadenceType.FLAT
+
+    def test_rhythm_score_dampened_short(self):
+        """Rhythm score on very short text must be lower than on long equivalent."""
+        short = detect_maqam("Sad!")
+        long_text = detect_maqam(
+            "I'm so sad! Everything is falling apart! "
+            "Nothing works anymore! I can't believe this! Why?!"
+        )
+        assert short.aqd.rhythm_score <= long_text.aqd.rhythm_score

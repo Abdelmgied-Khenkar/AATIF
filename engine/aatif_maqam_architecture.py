@@ -452,7 +452,7 @@ NEGATION_PREFIXES_EN: tuple = (
 
 NEGATION_PREFIXES_AR: tuple = (
     "مو ", "مش ", "ما ", "لا ", "ماني ",
-    "مب ", "مهو ", "مهي ",
+    "مب ", "مهو ", "مهي ", "موب ",
 )
 
 
@@ -560,6 +560,7 @@ def _compute_cadence(text: str) -> AqdReading:
 
     # Sentence lengths
     lengths = [len(s.split()) for s in sentences]
+    total_words = sum(lengths)
     mean_len = sum(lengths) / len(lengths) if lengths else 0
     variance = (sum((l - mean_len) ** 2 for l in lengths) / len(lengths)) ** 0.5 if lengths else 0
     # Normalise variance (0–1 scale, cap at 10)
@@ -576,12 +577,26 @@ def _compute_cadence(text: str) -> AqdReading:
     question_count = sum(1 for s in text if s in '?؟')
     q_ratio = question_count / max(len(sentences), 1)
 
+    # ── Short-text Aqd dampener (Gemini P0 #2) ──────────────
+    # When text is too short to establish cadence reliably,
+    # dampen punctuation_density and force FLAT cadence.
+    # Prevents a single "!" on a 2-word message from producing
+    # an inflated rhythm_score.
+    is_short_text = total_words < 15 or len(sentences) == 1
+    if is_short_text:
+        dampening = min(total_words / 15.0, 1.0)
+        norm_punct *= dampening
+        norm_variance *= dampening
+
     # Determine cadence type
     short_threshold = 4  # words
     short_sentences = sum(1 for l in lengths if l <= short_threshold)
     short_ratio = short_sentences / len(lengths) if lengths else 0
 
-    if q_ratio > 0.5:
+    # Short text cannot establish reliable cadence patterns
+    if is_short_text:
+        cadence = CadenceType.FLAT
+    elif q_ratio > 0.5:
         cadence = CadenceType.ASCENDING
     elif short_ratio > 0.6 and norm_punct > 0.3:
         cadence = CadenceType.STACCATO
