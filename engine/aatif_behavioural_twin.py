@@ -220,8 +220,15 @@ def compute_constitutional_drift(hash_a: str, hash_b: str) -> float:
 
     Constitutional values are non-negotiable — either they're identical
     or they've diverged completely.  No partial matching.
+
+    Security hardening (Gemini P0): rejects hashes shorter than 32
+    characters to prevent trivially-matched short strings from
+    masquerading as valid constitutional identity.
     """
     if not hash_a or not hash_b:
+        return 1.0
+    # P0 fix: reject suspiciously short hashes (valid SHA-256 = 64 hex chars)
+    if len(hash_a) < 32 or len(hash_b) < 32:
         return 1.0
     return 0.0 if hash_a == hash_b else 1.0
 
@@ -262,11 +269,18 @@ def compute_kendall_tau_distance(
     two rankings, normalized to [0.0, 1.0].
 
     Only compares items present in BOTH orderings.
-    Returns 0.0 if fewer than 2 shared items (can't compare).
+    If fewer than 2 shared items: returns 1.0 if the sets differ
+    (total divergence), 0.0 if both are identical or both empty.
+
+    Fix applied from Gemini P0 review: previously returned 0.0 for
+    disjoint orderings, falsely reporting perfect sync.
     """
     # Find shared items preserving order
     shared = [x for x in ordering_a if x in set(ordering_b)]
     if len(shared) < 2:
+        # P0 fix: disjoint orderings = total divergence, not sync
+        if set(ordering_a) != set(ordering_b):
+            return 1.0
         return 0.0
 
     # Get positions in ordering_b for shared items

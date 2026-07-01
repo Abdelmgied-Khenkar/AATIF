@@ -87,7 +87,7 @@ def _make_baseline(
     *,
     project_id: str = "proj_alpha",
     instance_id: str = "instance_a",
-    constitutional_hash: str = "abc123",
+    constitutional_hash: str = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
     tone_profile: tuple = ("warm", "direct", "patient"),
     safety_posture: float = 0.7,
     priority_ordering: tuple = ("mercy", "justice", "truth", "safety"),
@@ -144,7 +144,7 @@ def diverged_target():
     """Target that has diverged completely."""
     return _make_baseline(
         instance_id="laptop",
-        constitutional_hash="xyz999",
+        constitutional_hash="f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6b5a4f9e8d7c6b5a4f9e8",
         tone_profile=("cold", "terse"),
         safety_posture=0.2,
         priority_ordering=("safety", "truth", "justice", "mercy"),
@@ -290,20 +290,46 @@ class TestBaselineRegistry:
 
 class TestConstitutionalDrift:
 
+    # Valid hashes must be >= 32 chars (P0 security fix)
+    HASH_A = "a" * 64  # valid SHA-256 length
+    HASH_B = "b" * 64  # different valid hash
+
     def test_identical_hashes(self):
-        assert compute_constitutional_drift("abc", "abc") == 0.0
+        assert compute_constitutional_drift(self.HASH_A, self.HASH_A) == 0.0
 
     def test_different_hashes(self):
-        assert compute_constitutional_drift("abc", "xyz") == 1.0
+        assert compute_constitutional_drift(self.HASH_A, self.HASH_B) == 1.0
 
     def test_empty_hash_a(self):
-        assert compute_constitutional_drift("", "abc") == 1.0
+        assert compute_constitutional_drift("", self.HASH_A) == 1.0
 
     def test_empty_hash_b(self):
-        assert compute_constitutional_drift("abc", "") == 1.0
+        assert compute_constitutional_drift(self.HASH_A, "") == 1.0
 
     def test_both_empty(self):
         assert compute_constitutional_drift("", "") == 1.0
+
+    def test_short_hash_a_rejected(self):
+        """P0 fix: hashes shorter than 32 chars are rejected as invalid."""
+        assert compute_constitutional_drift("abc", self.HASH_A) == 1.0
+
+    def test_short_hash_b_rejected(self):
+        """P0 fix: hashes shorter than 32 chars are rejected as invalid."""
+        assert compute_constitutional_drift(self.HASH_A, "xyz") == 1.0
+
+    def test_short_hashes_both_rejected(self):
+        """P0 fix: two short matching hashes still rejected."""
+        assert compute_constitutional_drift("abc", "abc") == 1.0
+
+    def test_exactly_32_chars_accepted(self):
+        """Boundary: exactly 32 chars is the minimum valid length."""
+        h32 = "a" * 32
+        assert compute_constitutional_drift(h32, h32) == 0.0
+
+    def test_31_chars_rejected(self):
+        """Boundary: 31 chars is below the minimum."""
+        h31 = "a" * 31
+        assert compute_constitutional_drift(h31, h31) == 1.0
 
 
 class TestJaccardDistance:
@@ -362,11 +388,17 @@ class TestKendallTauDistance:
         )
         assert abs(dist - 1 / 3) < 1e-4
 
-    def test_fewer_than_two_shared(self):
+    def test_fewer_than_two_shared_identical(self):
+        # Single shared item, same set → 0.0 (identical)
         assert compute_kendall_tau_distance(["a"], ["a"]) == 0.0
 
     def test_no_shared_items(self):
-        assert compute_kendall_tau_distance(["a", "b"], ["c", "d"]) == 0.0
+        # P0 fix: disjoint orderings = total divergence (1.0), not sync (0.0)
+        assert compute_kendall_tau_distance(["a", "b"], ["c", "d"]) == 1.0
+
+    def test_fewer_than_two_shared_disjoint(self):
+        # Only 1 shared item but sets differ → 1.0 (divergence)
+        assert compute_kendall_tau_distance(["a", "b"], ["a", "c"]) == 1.0
 
     def test_partial_shared(self):
         # Only b, c shared. In A: b before c. In B: c before b → 1 inversion / 1 = 1.0
@@ -775,7 +807,7 @@ class TestRecalibrationSignals:
 
     def test_constitutional_drift_generates_signal(self, source_baseline):
         target = _make_baseline(
-            instance_id="other", constitutional_hash="different", timestamp=2001.0
+            instance_id="other", constitutional_hash="dd11ff22ee33dd11ff22ee33dd11ff22ee33dd11ff22ee33dd11ff22ee33dd11", timestamp=2001.0
         )
         drift = compute_twin_drift(source_baseline, target)
         signals = generate_recalibration_signals(source_baseline, target, drift)
@@ -791,7 +823,7 @@ class TestRecalibrationSignals:
 
     def test_signal_contains_recommendation(self, source_baseline):
         target = _make_baseline(
-            instance_id="other", constitutional_hash="different", timestamp=2001.0
+            instance_id="other", constitutional_hash="dd11ff22ee33dd11ff22ee33dd11ff22ee33dd11ff22ee33dd11ff22ee33dd11", timestamp=2001.0
         )
         drift = compute_twin_drift(source_baseline, target)
         signals = generate_recalibration_signals(source_baseline, target, drift)
