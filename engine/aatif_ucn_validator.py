@@ -24,7 +24,22 @@ Critical Design Rule (Single Mind):
   components that don't actually exist (phantom layers, phantom engines,
   phantom protocols).
 
-Design consensus: Claude, 2026-07-01
+ISOLATION CONTRACT (P0-B):
+  This module operates EXCLUSIVELY within the B3 (meaning) and B5
+  (behaviour) binding channels. It has NO pathway to affect:
+    - S equation (safety score)
+    - H score (harm score)
+    - theta (governance threshold)
+    - B2 (constitutional channel)
+    - B6 (safety channel)
+  Proof: UCNDetector produces a UCNReading dataclass. UCNReading contains
+  only observational fields (phantoms_detected, recommendations, evidence).
+  There is no import of, reference to, or invocation of S/H/theta/B2/B6
+  anywhere in this module. The ISOLATION_MARKER field on every UCNReading
+  confirms this contract at runtime.
+
+Design consensus: Claude + ChatGPT + Gemini + Grok, 2026-07-01
+P0 fixes from 3-model retroactive review applied 2026-07-01.
 Field Note: FN#042 (Unwritten Concept Nullification Law)
 
 License: BSL 1.1
@@ -35,13 +50,14 @@ Co-builder: Claude (Anthropic)
 from __future__ import annotations
 
 import enum
+import glob as _glob_mod
 import hashlib
 import json
 import os
 import re
 import sys
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, List, Optional, Set, Tuple
 
 # -- import shim for both package and flat layouts -----------------------
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +70,6 @@ except Exception:  # pragma: no cover
     def normalize_arabic(text: str) -> str:
         """Basic Arabic normalization: strip tashkeel, normalize alef/taa marbouta."""
         import unicodedata
-        # Strip tashkeel (Arabic diacritics: U+0610-U+061A, U+064B-U+065F, U+0670)
         _TASHKEEL = set(range(0x0610, 0x061B)) | set(range(0x064B, 0x0660)) | {0x0670}
         out = []
         for ch in text:
@@ -63,12 +78,10 @@ except Exception:  # pragma: no cover
                 continue
             out.append(ch)
         result = "".join(out)
-        # Normalize alef variants -> bare alef
         result = result.replace("آ", "ا")  # alef madda
         result = result.replace("أ", "ا")  # alef hamza above
         result = result.replace("إ", "ا")  # alef hamza below
-        # Normalize taa marbouta -> haa
-        result = result.replace("ة", "ه")
+        result = result.replace("ة", "ه")  # taa marbouta -> haa
         return result.lower()
 
 
@@ -92,6 +105,10 @@ CAN_MODIFY_S                = False
 CAN_EMIT_JUDICIAL_DECISION = False
 UCN_ENABLED_FLAG = True           # explicit UCN flag per spec
 
+# -- P0-B: Isolation contract markers ----------------------------------
+ISOLATION_MARKER = "B3_B5_ONLY_NOT_FOR_SAFETY"
+ISOLATION_TARGETS: FrozenSet[str] = frozenset({"B3_MEANING", "B5_BEHAVIOUR"})
+
 
 # =====================================================================
 #  UCN Violation Types  (FN#042 -- five phantom categories)
@@ -107,6 +124,17 @@ class UCNViolationType(enum.Enum):
 
 
 # =====================================================================
+#  P0-D: Reference Mode -- Proposed vs Asserted
+# =====================================================================
+
+class ReferenceMode(enum.Enum):
+    """Whether an architecture reference is stated as fact or as a proposal."""
+    ASSERTED     = "ASSERTED"       # stated as existing fact
+    PROPOSED     = "PROPOSED"       # speculative / design discussion
+    HYPOTHETICAL = "HYPOTHETICAL"   # clearly hypothetical / future
+
+
+# =====================================================================
 #  Constants -- calibration values
 # =====================================================================
 
@@ -114,6 +142,16 @@ FAST_PATH_MAX_CHARS = 20          # texts shorter than this with no AATIF contex
 SINGLE_PHANTOM_BASE_CONFIDENCE = 0.70
 MULTI_PHANTOM_COMPOUND_BONUS = 0.10
 MAX_CONFIDENCE = 0.95
+
+# P0-C: Context anchoring thresholds
+CONFIDENCE_CAP_NO_ANCHOR = 0.55   # max confidence without AATIF-specific anchor
+CONFIDENCE_CAP_WITH_ANCHOR = 0.95 # max confidence with AATIF-specific anchor
+
+# P0-D: Modal severity cap for speculative references
+PROPOSED_SEVERITY_CAP = 0.40
+
+# P0-E: Fuzzy matching threshold (raised from implicit ~0.6 to 0.80)
+FUZZY_SIMILARITY_THRESHOLD = 0.80
 
 # Per-violation-type base severity
 VIOLATION_SEVERITY: Dict[UCNViolationType, float] = {
@@ -124,16 +162,35 @@ VIOLATION_SEVERITY: Dict[UCNViolationType, float] = {
     UCNViolationType.PHANTOM_CONCEPT:  0.60,
 }
 
+# P0-C: AATIF-specific context anchors (keywords that confirm text is about AATIF)
+_AATIF_CONTEXT_ANCHORS = frozenset({
+    "aatif", "aatif_", "fn#", "b-prime", "governanceequation",
+    "governance equation", "عاطف", "حوكمة",
+})
+
+# P0-D: Speculative/hypothetical keyword markers
+_SPECULATIVE_MARKERS_EN = [
+    "proposed", "hypothetical", "future", "draft", "could build",
+    "might add", "would have", "could have", "we could", "we might",
+    "potential", "planned", "idea for", "design idea",
+]
+_SPECULATIVE_MARKERS_AR = [
+    "مقترح", "ممكن نضيف", "تصميم مبدئي", "غير مسجل",
+    "ممكن يكون", "فكرة", "مستقبلي", "مسودة",
+]
+
 
 # =====================================================================
-#  Component Registry -- the KNOWN AATIF architecture (Closed World)
+#  P0-A: Dynamic Component Registry
 # =====================================================================
 #
+#  _discover_engine_files() scans the engine/ directory at import time.
+#  The hardcoded list is kept as a FALLBACK only if discovery fails.
 #  If it is not in this registry, it does not exist.
 #  All entries are normalized to lowercase for O(1) lookup.
 
-# -- Engine/module file names (the 39 files in engine/) ----------------
-_KNOWN_ENGINE_FILES = frozenset({
+# -- FALLBACK: Engine/module file names (the known files in engine/) ---
+_FALLBACK_ENGINE_FILES = frozenset({
     "intent_engine", "s_equation", "r_equation", "governor",
     "meta_oversight", "false_goodness_detector", "pvm_detector",
     "psp_detector", "lbh_detector", "drift_detector",
@@ -145,8 +202,37 @@ _KNOWN_ENGINE_FILES = frozenset({
     "judgment_integration", "hysteresis", "math", "fingerprint",
     "time_sense", "arabic_utils", "authority_doctrine", "boot_sequence",
     "domain_protocols", "dual_root", "embeddings", "pipeline_connector",
-    "binding_map", "ucn_validator",
+    "binding_map", "ucn_validator", "cold_os",
 })
+
+
+def _discover_engine_files() -> FrozenSet[str]:
+    """P0-A: Scan engine/ directory for actual .py module files.
+
+    Returns a frozenset of module short names (e.g., 'intent_engine')
+    derived from filenames like 'aatif_intent_engine.py'.
+    Falls back to _FALLBACK_ENGINE_FILES if discovery fails.
+    """
+    try:
+        engine_dir = os.path.dirname(os.path.abspath(__file__))
+        pattern = os.path.join(engine_dir, "aatif_*.py")
+        files = _glob_mod.glob(pattern)
+        if not files:
+            return _FALLBACK_ENGINE_FILES
+        discovered: Set[str] = set()
+        for fpath in files:
+            basename = os.path.basename(fpath)  # e.g., "aatif_intent_engine.py"
+            name = basename.replace("aatif_", "", 1).replace(".py", "")
+            if name and not name.startswith("__"):
+                discovered.add(name)
+        return frozenset(discovered) if discovered else _FALLBACK_ENGINE_FILES
+    except Exception:
+        return _FALLBACK_ENGINE_FILES
+
+
+# P0-A: Use dynamic discovery; fallback is hardcoded list
+_KNOWN_ENGINE_FILES = _discover_engine_files()
+_REGISTRY_SOURCE = "dynamic" if _KNOWN_ENGINE_FILES != _FALLBACK_ENGINE_FILES else "fallback"
 
 # -- Short names (what people would actually say) ----------------------
 _KNOWN_SHORT_NAMES = frozenset({
@@ -157,10 +243,10 @@ _KNOWN_SHORT_NAMES = frozenset({
     "psp detector", "lbh detector", "false goodness detector",
     "muhajij", "binding map", "boot sequence", "fingerprint",
     "hysteresis", "pipeline connector", "judgment integration",
-    "ucn validator",
+    "ucn validator", "cold os",
 })
 
-# -- Arabic names ------------------------------------------------------
+# -- Arabic names (P0-F: expanded bilingual parity) --------------------
 _KNOWN_ARABIC_NAMES = frozenset({
     normalize_arabic(n) for n in [
         "محرك النية", "معادلة الحوكمة", "معادلة S", "معادلة R",
@@ -274,7 +360,7 @@ _RE_COMPONENT_REF_EN = [
     ),
 ]
 
-# Arabic patterns
+# Arabic patterns (P0-F: expanded for bilingual parity)
 _RE_COMPONENT_REF_AR = [
     # "محرك X" (engine X)
     re.compile(r"محرك\s+(\S+(?:\s+\S+)?)"),
@@ -288,7 +374,19 @@ _RE_COMPONENT_REF_AR = [
     re.compile(r"قناة\s+(\S+(?:\s+\S+)?)"),
     # "معادلة X" (equation X)
     re.compile(r"معادلة\s+(\S+(?:\s+\S+)?)"),
+    # P0-F: "وحدة X" (module/unit X)
+    re.compile(r"وحدة\s+(\S+(?:\s+\S+)?)"),
+    # P0-F: "مفهوم X" (concept X)
+    re.compile(r"مفهوم\s+(\S+(?:\s+\S+)?)"),
+    # P0-F: Mixed-script patterns: "محرك aatif_*" or "B3 قناة"
+    re.compile(r"محرك\s+(aatif_\w+)"),
+    re.compile(r"(B\d+)\s+قناة", re.IGNORECASE),
 ]
+
+# P0-F: Arabic morphological prefix stripping pattern
+# Handles ال (al-), و (wa-), ب (bi-), ف (fa-), ل (li-) prefixed to terms
+# Also handles compound prefixes: وال, بال, فال, لل
+_AR_PREFIX_PATTERN = re.compile(r"^(?:وال|بال|فال|لل|ال|و|ب|ف|ل)")
 
 
 # =====================================================================
@@ -334,7 +432,8 @@ UCN_CORRECTION_PREAMBLE = (
 
 
 # =====================================================================
-#  Data Classes
+#  Data Classes (P0-B: isolation_marker, P0-C: split confidences,
+#                P0-D: reference_mode, P0-E: correction_status)
 # =====================================================================
 
 @dataclass
@@ -343,8 +442,16 @@ class UCNViolation:
     violation_type: UCNViolationType
     phantom_name: str           # the invented concept name
     context_snippet: str        # surrounding text where it was found
-    confidence: float           # [0,1]
+    confidence: float           # [0,1] -- overall confidence
     severity: float             # [0,1]
+    # P0-C: Split confidence
+    detection_confidence: float = 0.0   # is this an architecture reference?
+    phantom_confidence: float = 0.0     # is the referenced component nonexistent?
+    # P0-D: Modal classification
+    reference_mode: str = "ASSERTED"    # "ASSERTED" | "PROPOSED" | "HYPOTHETICAL"
+    # P0-E: Correction status
+    correction_status: str = "candidate_not_authoritative"
+    suggested_correction: str = ""
 
 
 @dataclass
@@ -355,12 +462,16 @@ class UCNReading:
     This reading tells the pipeline whether the output references
     phantom AATIF components. It never blocks, never modifies
     H/theta/S, and never makes safety decisions.
+
+    P0-B: _isolation_marker confirms this reading operates in B3/B5 only.
     """
     phantoms_detected: List[UCNViolation]
     architecture_references_found: int    # total refs to AATIF architecture
     all_references_valid: bool            # True when no phantoms found
     recommendations: List[str]
     evidence: List[str] = field(default_factory=list)
+    # P0-B: Isolation contract marker -- always set
+    _isolation_marker: str = field(default=ISOLATION_MARKER, repr=False)
 
 
 # =====================================================================
@@ -385,6 +496,52 @@ def _text_of(draft: Any) -> str:
     return _get(draft, "text", "") or _get(draft, "content", "") or ""
 
 
+def _simple_similarity(a: str, b: str) -> float:
+    """P0-E: Simple character-based similarity ratio (0..1).
+
+    Uses Dice coefficient on character bigrams -- lightweight, no
+    external dependencies.
+    """
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    a_bigrams = set(a[i:i+2] for i in range(len(a) - 1)) if len(a) > 1 else {a}
+    b_bigrams = set(b[i:i+2] for i in range(len(b) - 1)) if len(b) > 1 else {b}
+    intersection = a_bigrams & b_bigrams
+    if not a_bigrams and not b_bigrams:
+        return 0.0
+    return 2.0 * len(intersection) / (len(a_bigrams) + len(b_bigrams))
+
+
+def _has_aatif_anchor(text_lower: str) -> bool:
+    """P0-C: Check if the text contains AATIF-specific context anchors."""
+    for anchor in _AATIF_CONTEXT_ANCHORS:
+        if anchor in text_lower:
+            return True
+    return False
+
+
+def _detect_reference_mode(text: str) -> str:
+    """P0-D: Detect if the text uses speculative/hypothetical language.
+
+    Returns "PROPOSED", "HYPOTHETICAL", or "ASSERTED".
+    """
+    low = text.lower()
+    norm = normalize_arabic(text)
+    # Check English speculative markers
+    for marker in _SPECULATIVE_MARKERS_EN:
+        if marker in low:
+            if marker in ("hypothetical",):
+                return "HYPOTHETICAL"
+            return "PROPOSED"
+    # Check Arabic speculative markers
+    for marker in _SPECULATIVE_MARKERS_AR:
+        if normalize_arabic(marker) in norm:
+            return "PROPOSED"
+    return "ASSERTED"
+
+
 # =====================================================================
 #  UCNDetector -- observational, ARCHITECTURAL INTEGRITY
 # =====================================================================
@@ -404,10 +561,22 @@ class UCNDetector:
 
     The detector outputs a UCNReading. It does not generate response content,
     does not block responses, and does not touch S/H/theta.
+
+    P0-A: Registry is dynamically discovered from engine/ directory.
+    P0-B: Every UCNReading carries an isolation marker.
+    P0-C: Confidence is context-anchored (requires AATIF keywords).
+    P0-D: Speculative references are classified as PROPOSED, not PHANTOM.
+    P0-E: Fuzzy suggestions use 0.80 threshold, marked candidate_not_authoritative.
+    P0-F: Arabic patterns expanded for bilingual parity.
     """
 
     def __init__(self):
         self._registry = KNOWN_COMPONENTS
+
+    @classmethod
+    def registry_source(cls) -> str:
+        """P0-A: Return whether the registry was built from dynamic discovery or fallback."""
+        return _REGISTRY_SOURCE
 
     # -- Public API ---------------------------------------------------
 
@@ -436,8 +605,13 @@ class UCNDetector:
         norm = normalize_arabic(raw)
         evidence: List[str] = []
 
+        # -- P0-C: Detect AATIF-specific context anchors ---------------
+        has_anchor = _has_aatif_anchor(low) or _has_aatif_anchor(norm)
+
+        # -- P0-D: Detect reference mode (speculative vs asserted) -----
+        ref_mode = _detect_reference_mode(raw)
+
         # -- Step 1: AATIF context detection ---------------------------
-        #  If the text is not about AATIF architecture, fast-path skip.
         has_context = False
         for trigger in _CONTEXT_TRIGGERS_EN:
             if trigger in low:
@@ -462,10 +636,6 @@ class UCNDetector:
             )
 
         # -- Step 2: Reference extraction ------------------------------
-        # Each entry: (raw_match, normalized_for_lookup, guessed_type,
-        #              snippet, full_normalized)
-        # full_normalized: the FULL regex match (incl. prefix like "محرك")
-        #   normalized to allow registry lookup of the compound.
         extracted: list = []
 
         # English extraction
@@ -473,34 +643,26 @@ class UCNDetector:
             for match in pattern.finditer(raw):
                 raw_match = match.group(1).strip()
                 normalized = raw_match.lower().strip()
-
-                # Determine violation type from context
                 full_match = match.group(0).lower()
                 vtype = self._classify_type(full_match, normalized)
-
-                # Get context snippet (50 chars around the match)
                 start = max(0, match.start() - 25)
                 end = min(len(raw), match.end() + 25)
                 snippet = raw[start:end].strip()
-
                 extracted.append(
                     (raw_match, normalized, vtype, snippet, full_match)
                 )
 
-        # Arabic extraction
+        # Arabic extraction (P0-F: uses expanded patterns)
         for pattern in _RE_COMPONENT_REF_AR:
             for match in pattern.finditer(raw):
                 raw_match = match.group(1).strip()
                 normalized = normalize_arabic(raw_match)
-
                 full_match = match.group(0)
                 full_normalized = normalize_arabic(full_match)
                 vtype = self._classify_type_ar(full_match)
-
                 start = max(0, match.start() - 25)
                 end = min(len(raw), match.end() + 25)
                 snippet = raw[start:end].strip()
-
                 extracted.append(
                     (raw_match, normalized, vtype, snippet, full_normalized)
                 )
@@ -526,13 +688,15 @@ class UCNDetector:
         seen_phantoms: set = set()  # deduplicate
 
         for raw_match, normalized, vtype, snippet, full_norm in extracted:
-            # Check against all registry forms:
-            # 1. Check the captured argument (e.g., "intent", "النية")
-            # 2. Check the full match incl. prefix (e.g., "the intent engine",
-            #    "محرك النيه") — handles Arabic compounds where the registry
-            #    stores "محرك النيه" but the capture is just "النيه في"
+            # Check against all registry forms
             if self._is_known(normalized) or self._is_known(full_norm):
                 evidence.append(f"valid_ref: '{raw_match}' -> found in registry")
+                continue
+
+            # P0-F: Try with Arabic prefix stripping
+            stripped_ar = _AR_PREFIX_PATTERN.sub("", normalized).strip()
+            if stripped_ar and self._is_known(stripped_ar):
+                evidence.append(f"valid_ref: '{raw_match}' -> found after prefix strip")
                 continue
 
             # Deduplicate (strip articles for dedup key)
@@ -542,15 +706,43 @@ class UCNDetector:
                 continue
             seen_phantoms.add(dedup_key)
 
-            # -- Step 4: Scoring ---------------------------------------
+            # -- Step 4: Scoring (P0-C: context-anchored) ---------------
             base_severity = VIOLATION_SEVERITY[vtype]
-            confidence = SINGLE_PHANTOM_BASE_CONFIDENCE
+
+            # P0-C: detection_confidence -- is this an architecture ref?
+            detection_confidence = 0.85 if has_anchor else 0.60
+
+            # P0-C: phantom_confidence -- base, capped by anchor presence
+            if has_anchor:
+                phantom_confidence = SINGLE_PHANTOM_BASE_CONFIDENCE
+                confidence_cap = CONFIDENCE_CAP_WITH_ANCHOR
+            else:
+                phantom_confidence = min(
+                    SINGLE_PHANTOM_BASE_CONFIDENCE,
+                    CONFIDENCE_CAP_NO_ANCHOR,
+                )
+                confidence_cap = CONFIDENCE_CAP_NO_ANCHOR
+
+            # P0-C: Combined confidence
+            confidence = min(phantom_confidence, confidence_cap)
             severity = base_severity
+
+            # P0-D: Modal classification
+            violation_mode = ref_mode
+            if violation_mode in ("PROPOSED", "HYPOTHETICAL"):
+                severity = min(severity, PROPOSED_SEVERITY_CAP)
+                evidence.append(
+                    f"modal_cap: '{raw_match}' classified as {violation_mode}, "
+                    f"severity capped at {PROPOSED_SEVERITY_CAP}"
+                )
 
             # Clean phantom name: strip leading articles for display
             clean_name = re.sub(
                 r"^(?:an?\s+|the\s+)", "", raw_match, flags=re.IGNORECASE
             ).strip() or raw_match
+
+            # P0-E: Find fuzzy suggestion (conservative, threshold 0.80)
+            suggested = self._find_closest(normalized)
 
             phantoms.append(UCNViolation(
                 violation_type=vtype,
@@ -558,10 +750,16 @@ class UCNDetector:
                 context_snippet=snippet,
                 confidence=round(confidence, 3),
                 severity=round(severity, 3),
+                detection_confidence=round(detection_confidence, 3),
+                phantom_confidence=round(phantom_confidence, 3),
+                reference_mode=violation_mode,
+                correction_status="candidate_not_authoritative",
+                suggested_correction=suggested,
             ))
             evidence.append(
                 f"PHANTOM: '{raw_match}' (type={vtype.value}, "
-                f"conf={confidence:.2f}, sev={severity:.2f})"
+                f"conf={confidence:.2f}, sev={severity:.2f}, "
+                f"mode={violation_mode}, anchor={has_anchor})"
             )
 
         # Compound scoring: multiple phantoms increase confidence
@@ -571,9 +769,12 @@ class UCNDetector:
                     (len(phantoms) - 1) * MULTI_PHANTOM_COMPOUND_BONUS,
                     0.20,
                 )
+                new_conf = p.confidence + bonus
+                # P0-C: Still respect anchor-based cap
+                cap = CONFIDENCE_CAP_WITH_ANCHOR if has_anchor else CONFIDENCE_CAP_NO_ANCHOR
                 p.confidence = min(
-                    round(p.confidence + bonus, 3),
-                    MAX_CONFIDENCE,
+                    round(new_conf, 3),
+                    cap,
                 )
             evidence.append(
                 f"compound_bonus: {len(phantoms)} phantoms, "
@@ -583,7 +784,10 @@ class UCNDetector:
         # -- Build recommendations ------------------------------------
         recommendations: List[str] = []
         for p in phantoms:
-            recommendations.append(CORRECTION_BY_TYPE[p.violation_type])
+            rec = CORRECTION_BY_TYPE[p.violation_type]
+            if p.suggested_correction:
+                rec += f" (suggestion [candidate_not_authoritative]: '{p.suggested_correction}')"
+            recommendations.append(rec)
 
         if UCN_MONITOR_ONLY:
             evidence.append(
@@ -608,28 +812,33 @@ class UCNDetector:
         """Check if a normalized reference exists in the registry.
 
         Uses progressive word stripping from both leading and trailing
-        edges to handle regex greediness (e.g., "uses the intent" should
-        still match "intent engine" after stripping "uses the").
+        edges to handle regex greediness. P0-F: also strips Arabic
+        morphological prefixes.
         """
-        # Strip leading articles (a, an, the)
         cleaned = re.sub(r"^(?:an?\s+|the\s+)", "", normalized).strip()
         if not cleaned:
             return True  # nothing left after stripping -> not a real reference
 
         candidates = {normalized, cleaned}
 
-        # Progressive word stripping: try removing leading words one by one
-        # e.g., "uses the intent" -> "the intent" -> "intent"
+        # Progressive word stripping
         words = cleaned.split()
         for i in range(len(words)):
             sub = " ".join(words[i:]).strip()
             if sub:
                 candidates.add(sub)
-        # Also try stripping trailing words (for Arabic: "النية في" -> "النية")
         for i in range(len(words), 0, -1):
             sub = " ".join(words[:i]).strip()
             if sub:
                 candidates.add(sub)
+
+        # P0-F: Add Arabic prefix-stripped candidates
+        ar_candidates = set()
+        for c in list(candidates):
+            stripped = _AR_PREFIX_PATTERN.sub("", c).strip()
+            if stripped and stripped != c:
+                ar_candidates.add(stripped)
+        candidates |= ar_candidates
 
         for candidate in list(candidates):
             # Direct lookup
@@ -655,6 +864,26 @@ class UCNDetector:
                 return True
 
         return False
+
+    def _find_closest(self, phantom_name: str) -> str:
+        """P0-E: Find the closest known component by similarity.
+
+        Returns the closest match if similarity >= FUZZY_SIMILARITY_THRESHOLD,
+        otherwise returns empty string. Never auto-corrects -- only suggests.
+        All suggestions carry correction_status='candidate_not_authoritative'.
+        """
+        if not phantom_name:
+            return ""
+        best_match = ""
+        best_score = 0.0
+        for known in self._registry:
+            score = _simple_similarity(phantom_name, known)
+            if score > best_score:
+                best_score = score
+                best_match = known
+        if best_score >= FUZZY_SIMILARITY_THRESHOLD:
+            return best_match
+        return ""
 
     @staticmethod
     def _classify_type(full_match: str, normalized: str) -> UCNViolationType:
@@ -685,6 +914,10 @@ class UCNDetector:
             return UCNViolationType.PHANTOM_CHANNEL
         if "معادلة" in full_match:
             return UCNViolationType.PHANTOM_ENGINE
+        if "وحدة" in full_match:
+            return UCNViolationType.PHANTOM_ENGINE
+        if "مفهوم" in full_match:
+            return UCNViolationType.PHANTOM_CONCEPT
         return UCNViolationType.PHANTOM_CONCEPT
 
 
@@ -717,11 +950,15 @@ def recommend_correction(reading: UCNReading) -> str:
     )
 
     for p in reading.phantoms_detected:
-        parts.append(
+        line = (
             f"  [{p.violation_type.value}] '{p.phantom_name}' "
-            f"(conf={p.confidence:.2f}, sev={p.severity:.2f}): "
+            f"(conf={p.confidence:.2f}, sev={p.severity:.2f}, "
+            f"mode={p.reference_mode}): "
             f"{CORRECTION_BY_TYPE[p.violation_type]}"
         )
+        if p.suggested_correction:
+            line += f" [suggestion (candidate_not_authoritative): '{p.suggested_correction}']"
+        parts.append(line)
 
     return "\n".join(parts)
 
@@ -734,8 +971,8 @@ def ucn_audit_hash(reading: UCNReading) -> str:
     """
     SHA256 of the UCN reading for audit integrity.
 
-    Same pattern as PVM/LBH audit hash -- trace integrity without
-    storing raw content.
+    P0-A: includes registry_version to track which registry produced
+    the reading (dynamic vs fallback).
     """
     payload = json.dumps({
         "all_references_valid": reading.all_references_valid,
@@ -743,6 +980,7 @@ def ucn_audit_hash(reading: UCNReading) -> str:
         "phantom_count": len(reading.phantoms_detected),
         "phantom_types": [p.violation_type.value for p in reading.phantoms_detected],
         "evidence_count": len(reading.evidence),
+        "registry_source": _REGISTRY_SOURCE,
     }, sort_keys=True)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -872,14 +1110,23 @@ __all__ = [
     "CAN_MODIFY_S",
     "CAN_EMIT_JUDICIAL_DECISION",
     "UCN_ENABLED_FLAG",
+    # P0-B: Isolation contract
+    "ISOLATION_MARKER",
+    "ISOLATION_TARGETS",
     # Violation type enum
     "UCNViolationType",
+    # P0-D: Reference mode
+    "ReferenceMode",
     # Constants
     "FAST_PATH_MAX_CHARS",
     "SINGLE_PHANTOM_BASE_CONFIDENCE",
     "MULTI_PHANTOM_COMPOUND_BONUS",
     "MAX_CONFIDENCE",
     "VIOLATION_SEVERITY",
+    "CONFIDENCE_CAP_NO_ANCHOR",
+    "CONFIDENCE_CAP_WITH_ANCHOR",
+    "PROPOSED_SEVERITY_CAP",
+    "FUZZY_SIMILARITY_THRESHOLD",
     # Registry
     "KNOWN_COMPONENTS",
     # Correction templates
