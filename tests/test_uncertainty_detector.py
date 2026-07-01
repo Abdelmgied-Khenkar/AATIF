@@ -231,9 +231,9 @@ class TestAmbiguity:
         assert n == 0
 
     def test_ambiguity_h_i_divergence(self, detector):
-        """High H + high I simultaneously = confusing → ambiguity signal."""
+        """Large H-I gap (>0.3) with non-trivial H → ambiguity signal."""
         result = {
-            "H": 0.6, "I": 0.8, "E": 0.5,
+            "H": 0.7, "I": 0.2, "E": 0.5,
             "scorer_confidence": {"H": "high", "I": "high", "E": "high"},
             "unknown_territory": False,
         }
@@ -697,3 +697,94 @@ class TestEdgeCases:
         disc = UncertaintyDisclosure()
         assert disc.disclosure_level == "none"
         assert disc.what_unknown == ""
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestAdversarial — bugs found by 4-model external review
+#  (ChatGPT, Gemini, Grok, DeepSeek — unanimous on all 4)
+# ═══════════════════════════════════════════════════════════════
+
+class TestAdversarial:
+    """Adversarial tests targeting confirmed bugs from external review."""
+
+    def test_trace_never_exceeds_1_after_100_updates(self, enable_uncertainty, enable_trace):
+        """BUG 1 regression: trace must stay bounded in [0, 1] after
+        100 consecutive max-uncertainty updates (EMA fix)."""
+        detector = UncertaintyDetector()
+        # Max uncertainty: all low confidence, zero coverage
+        worst_result = {
+            "H": 0.0, "I": 0.0, "E": 0.0,
+            "scorer_confidence": {"H": "low", "I": "low", "E": "low"},
+            "scorer_max_sim": {"H": 0.05, "I": 0.05, "E": 0.05},
+            "unknown_territory": True,
+        }
+        for turn in range(100):
+            reading = detector.detect(worst_result, domain="general")
+            assert reading.uncertainty_trace <= 1.0, (
+                f"Trace overflowed at turn {turn+1}: {reading.uncertainty_trace}"
+            )
+            assert reading.uncertainty_trace >= 0.0, (
+                f"Trace went negative at turn {turn+1}: {reading.uncertainty_trace}"
+            )
+
+    def test_hi_divergence_fires_on_accidental_harm(self, detector, enable_uncertainty):
+        """BUG 2 regression: H=0.9, I=0.1 (accidental harm) must
+        trigger divergence signal — old code required I > 0.6."""
+        result = {
+            "H": 0.9, "I": 0.1, "E": 0.5,
+            "scorer_confidence": {"H": "high", "I": "high", "E": "high"},
+            "scorer_max_sim": {"H": 0.55, "I": 0.55, "E": 0.55},
+            "unknown_territory": False,
+        }
+        ambiguity, n_signals = detector._compute_ambiguity(result)
+        assert n_signals >= 1, (
+            "Divergence did not fire for H=0.9, I=0.1 (accidental harm)"
+        )
+        assert ambiguity > 0.0, (
+            f"Ambiguity should be > 0 for accidental harm, got {ambiguity}"
+        )
+
+    def test_nan_input_produces_safe_fallback(self, detector, enable_uncertainty):
+        """BUG 4 regression: NaN in scorer confidence must produce
+        safe fallback (low calibration_confidence → CLARIFY/ABSTAIN)."""
+        result = {
+            "H": float('nan'), "I": 0.5, "E": 0.5,
+            "scorer_confidence": {"H": float('nan'), "I": "high", "E": "high"},
+            "scorer_max_sim": {"H": float('nan'), "I": 0.50, "E": 0.50},
+            "unknown_territory": False,
+        }
+        reading = detector.detect(result, domain="healthcare")
+        # Must not be NaN
+        import math
+        assert not math.isnan(reading.calibration_confidence), (
+            "calibration_confidence is NaN — NaN guard failed"
+        )
+        assert not math.isinf(reading.calibration_confidence), (
+            "calibration_confidence is Inf — Inf guard failed"
+        )
+        # Should be low enough to trigger gate or abstention in healthcare
+        assert reading.calibration_confidence <= 1.0
+        assert reading.calibration_confidence >= 0.0
+
+    def test_abstention_triggers_when_below_threshold(self, enable_uncertainty):
+        """BUG 3 regression: abstention must set should_gate=True
+        (abstention is connected to gate, not floating independently)."""
+        detector = UncertaintyDetector()
+        # Fabricate result that produces cc < abstention_threshold (0.30 for healthcare)
+        result = {
+            "H": 0.8, "I": 0.8, "E": 0.5,
+            "scorer_confidence": {"H": "low", "I": "low", "E": "low"},
+            "scorer_max_sim": {"H": 0.05, "I": 0.05, "E": 0.05},
+            "unknown_territory": True,
+        }
+        reading = detector.detect(
+            result, domain="healthcare",
+            arabic_signals={"arabizi_detected": True, "cultural_indirection": True},
+        )
+        assert reading.should_abstain, (
+            f"Expected abstention for cc={reading.calibration_confidence} "
+            f"< threshold=0.30"
+        )
+        assert reading.should_gate, (
+            "Abstention must imply should_gate=True (gate connected to abstention)"
+        )

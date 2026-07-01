@@ -29,6 +29,7 @@ Co-builder: Claude (Anthropic)
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -286,28 +287,30 @@ class UncertaintyDetector:
                 reading.total_arabic_penalty = total_penalty
                 evidence.append(f"arabic_penalty={total_penalty:.3f}")
 
+        # ── NaN/Inf guard — fail safe ────────────────────────────
+        if math.isnan(cal_conf) or math.isinf(cal_conf):
+            cal_conf = 0.0  # fail safe → triggers CLARIFY/ABSTAIN
+
         reading.calibration_confidence = round(cal_conf, 4)
 
         # ── 7. Domain threshold and gating decision ───────────────
         xi = self._get_xi(domain)
         reading.xi_threshold = xi
 
-        reading.should_gate = (
-            UNCERTAINTY_GATE_ENABLED
-            and cal_conf < xi
-        )
-
-        # ── 8. Abstention threshold ───────────────────────────────
+        # ── 8. Abstention threshold (checked BEFORE gate) ────────
         abstention_threshold = ABSTENTION_THRESHOLD_BY_DOMAIN.get(
             domain, ABSTENTION_BASELINE
         )
         reading.should_abstain = cal_conf < abstention_threshold
 
         if reading.should_abstain:
+            if UNCERTAINTY_GATE_ENABLED:
+                reading.should_gate = True  # abstention implies gating
             evidence.append(
                 f"ABSTAIN: {cal_conf:.3f} < abstention={abstention_threshold:.2f}"
             )
-        elif reading.should_gate:
+        elif UNCERTAINTY_GATE_ENABLED and cal_conf < xi:
+            reading.should_gate = True
             evidence.append(
                 f"GATE: {cal_conf:.3f} < xi={xi:.2f}"
             )
@@ -315,7 +318,7 @@ class UncertaintyDetector:
         # ── 9. Multi-turn trace ───────────────────────────────────
         if UNCERTAINTY_TRACE_ENABLED:
             current_uncertainty = 1.0 - cal_conf
-            trace = current_uncertainty + self._trace_lambda * self._previous_trace
+            trace = (1 - self._trace_lambda) * current_uncertainty + self._trace_lambda * self._previous_trace
             self._previous_trace = trace
             reading.uncertainty_trace = round(trace, 4)
             evidence.append(f"trace={trace:.3f}")
@@ -370,10 +373,10 @@ class UncertaintyDetector:
         n_signals = 0
         total = 0.0
 
-        # Signal 1: H-I divergence — both high simultaneously is ambiguous
-        # High H (>0.4) AND high I (>0.6) = confusing combination
-        if H > 0.4 and I > 0.6:
-            divergence = min(H, I - 0.5)  # how strong is the conflict
+        # Signal 1: H-I divergence — large gap between H and I is ambiguous
+        # Only fires when harm is non-trivial (H > 0.4)
+        if H > 0.4 and abs(H - I) > 0.3:
+            divergence = min(1.0, abs(H - I) * 1.5)
             total += divergence
             n_signals += 1
 
