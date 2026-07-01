@@ -41,6 +41,8 @@ from aatif_cold_os import (
     CONTEXT_SPIRITUAL_AR,
     CONTEXT_FINANCIAL_EN,
     CONTEXT_FINANCIAL_AR,
+    CONTEXT_PRACTICAL_EN,
+    CONTEXT_PRACTICAL_AR,
 )
 
 
@@ -856,6 +858,8 @@ class TestMarkerSets(unittest.TestCase):
             ("SPIRITUAL_AR", CONTEXT_SPIRITUAL_AR),
             ("FINANCIAL_EN", CONTEXT_FINANCIAL_EN),
             ("FINANCIAL_AR", CONTEXT_FINANCIAL_AR),
+            ("PRACTICAL_EN", CONTEXT_PRACTICAL_EN),
+            ("PRACTICAL_AR", CONTEXT_PRACTICAL_AR),
         ]:
             with self.subTest(name=name):
                 self.assertGreater(len(markers), 5)
