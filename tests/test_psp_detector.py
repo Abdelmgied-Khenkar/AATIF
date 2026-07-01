@@ -35,6 +35,11 @@ from aatif_psp_detector import (
     BOUNDED_HARD_MAX,
     TRADEOFF_REQUIRED_THRESHOLD,
     PSP_PROFILE_BY_DOMAIN,
+    PSPState,
+    next_psp_state,
+    psp_should_deactivate,
+    DEACTIVATION_TURNS_GENERAL,
+    DEACTIVATION_TURNS_HIGH_STAKES,
 )
 
 
@@ -558,3 +563,274 @@ class TestConstants:
 
     def test_tradeoff_threshold(self):
         assert TRADEOFF_REQUIRED_THRESHOLD == 0.5
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestPSPState — the decision-space lifecycle enum (FN#070 v1)
+# ═══════════════════════════════════════════════════════════════
+
+class TestPSPState:
+    def test_all_states_present(self):
+        names = {s.name for s in PSPState}
+        assert names == {
+            "DORMANT", "DETECTED", "EXPLORING",
+            "NARROWING", "CLOSURE_REQUESTED", "CLOSED",
+        }
+
+    def test_context_defaults_to_dormant(self):
+        ctx = PSPContext()
+        assert ctx.state is PSPState.DORMANT
+        assert ctx.decision_topic is None
+        assert ctx.user_requested_closure is False
+        assert ctx.last_psp_turn_index == -1
+        assert ctx.last_decision_marker_turn_index == -1
+        assert ctx.last_transition_reason is None
+
+    def test_context_minimum_v1_fields_exist(self):
+        """The consensus minimum v1 field set must all be present."""
+        ctx = PSPContext()
+        for f in ("state", "decision_topic", "live_paths", "rejected_paths",
+                  "user_requested_closure", "last_psp_turn_index",
+                  "last_decision_marker_turn_index", "domain_profile",
+                  "last_transition_reason"):
+            assert hasattr(ctx, f), f"PSPContext missing v1 field {f!r}"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestStateTransitions — next_psp_state() covers every valid edge
+# ═══════════════════════════════════════════════════════════════
+
+def _reading(is_dp=False, requested_closure=False):
+    return PSPReading(
+        is_decision_point=is_dp,
+        decision_confidence=0.8 if is_dp else 0.0,
+        closure_risk=0.5 if is_dp else 0.0,
+        user_requested_closure=requested_closure,
+    )
+
+
+class TestStateTransitions:
+    def test_dormant_to_detected(self):
+        state, reason = next_psp_state(PSPState.DORMANT, _reading(is_dp=True))
+        assert state is PSPState.DETECTED
+        assert reason == "decision_markers_found"
+
+    def test_dormant_stays_dormant(self):
+        state, reason = next_psp_state(PSPState.DORMANT, _reading(is_dp=False))
+        assert state is PSPState.DORMANT
+
+    def test_detected_to_exploring(self):
+        state, reason = next_psp_state(PSPState.DETECTED, _reading(is_dp=True))
+        assert state is PSPState.EXPLORING
+        assert reason == "alternatives_presented"
+
+    def test_exploring_to_narrowing_on_rejection(self):
+        state, reason = next_psp_state(
+            PSPState.EXPLORING, _reading(is_dp=True),
+            user_turn_features="I prefer the first one, drop the others")
+        assert state is PSPState.NARROWING
+        assert reason == "user_rejecting_or_preferring"
+
+    def test_narrowing_to_closure_requested(self):
+        state, reason = next_psp_state(
+            PSPState.NARROWING, _reading(is_dp=True, requested_closure=True),
+            user_turn_features="ok just pick one for me")
+        assert state is PSPState.CLOSURE_REQUESTED
+        assert reason == "user_requested_closure"
+
+    def test_closure_requested_to_closed(self):
+        """After closure is requested, the next turn delivers closure → CLOSED."""
+        state, reason = next_psp_state(
+            PSPState.CLOSURE_REQUESTED, _reading(is_dp=False))
+        assert state is PSPState.CLOSED
+        assert reason == "closure_delivered"
+
+    def test_any_to_closed_on_topic_shift(self):
+        for s in PSPState:
+            state, reason = next_psp_state(
+                s, _reading(is_dp=True), topic_shift_signal=True)
+            assert state is PSPState.CLOSED
+            assert reason == "topic_shift"
+
+    def test_any_to_closed_on_user_decided(self):
+        state, reason = next_psp_state(
+            PSPState.EXPLORING, _reading(is_dp=False),
+            user_turn_features="thanks, I decided — I'll go with option B")
+        assert state is PSPState.CLOSED
+        assert reason == "user_decided"
+
+    def test_arabic_user_decided_closes(self):
+        state, reason = next_psp_state(
+            PSPState.EXPLORING, _reading(is_dp=False),
+            user_turn_features="خلاص قررت بروح على الطب")
+        assert state is PSPState.CLOSED
+        assert reason == "user_decided"
+
+    def test_closed_reopens_on_new_decision(self):
+        state, reason = next_psp_state(PSPState.CLOSED, _reading(is_dp=True))
+        assert state is PSPState.DETECTED
+        assert reason == "new_decision_after_close"
+
+    def test_single_quiet_turn_does_not_close(self):
+        """A single non-decision turn must NOT drop an active decision context."""
+        for s in (PSPState.DETECTED, PSPState.EXPLORING, PSPState.NARROWING):
+            state, _ = next_psp_state(s, _reading(is_dp=False),
+                                      user_turn_features="hmm let me think")
+            assert state is s, f"{s} should hold on a single quiet turn"
+
+    def test_none_current_state_treated_as_dormant(self):
+        state, _ = next_psp_state(None, _reading(is_dp=True))
+        assert state is PSPState.DETECTED
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestDeactivation — hybrid N-turn policy (consensus §Q4)
+# ═══════════════════════════════════════════════════════════════
+
+class TestDeactivation:
+    def test_general_deactivates_after_three_quiet_turns(self):
+        assert psp_should_deactivate(2, "medium") is False
+        assert psp_should_deactivate(3, "medium") is True
+        assert DEACTIVATION_TURNS_GENERAL == 3
+
+    def test_high_stakes_holds_longer(self):
+        assert psp_should_deactivate(3, "high") is False
+        assert psp_should_deactivate(5, "high") is True
+        assert DEACTIVATION_TURNS_HIGH_STAKES == 5
+
+    def test_creative_holds_like_high_stakes(self):
+        """Creative (adaptive) keeps ideation open longer."""
+        assert psp_should_deactivate(3, "adaptive") is False
+        assert psp_should_deactivate(5, "adaptive") is True
+
+    def test_closure_answered_deactivates_immediately(self):
+        assert psp_should_deactivate(0, "high", closure_answered=True) is True
+
+    def test_topic_shift_deactivates_immediately(self):
+        assert psp_should_deactivate(0, "medium", topic_shift=True) is True
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestObjectiveSuppression — factual spec comparisons are NOT PSP
+# ═══════════════════════════════════════════════════════════════
+
+class TestObjectiveSuppression:
+    @pytest.mark.parametrize("text", [
+        "Which one is cheaper and faster?",
+        "Which is faster, the M2 or the M3?",
+        "Which phone has more RAM?",
+        "Compare the specs of the two laptops",
+        "Which one has a bigger battery life?",
+    ])
+    def test_objective_comparisons_not_flagged(self, text):
+        det = PSPDetector()
+        r = det.detect(text, domain_config=DomainPSPConfig.for_domain("general"))
+        assert r.is_decision_point is False, \
+            f"objective comparison must not be a decision point: {text!r}"
+
+    def test_suppressor_leaves_evidence(self):
+        det = PSPDetector()
+        r = det.detect("Which one is cheaper and faster?",
+                       domain_config=DomainPSPConfig.for_domain("general"))
+        assert any("objective_comparison_suppressor" in e for e in r.evidence)
+
+    def test_personal_marker_overrides_suppressor(self):
+        """'for my family' turns a spec comparison back into a decision."""
+        det = PSPDetector()
+        r = det.detect("Which laptop is cheaper for my family?",
+                       domain_config=DomainPSPConfig.for_domain("general"))
+        assert r.is_decision_point is True
+        assert any("personal_choice_markers" in e for e in r.evidence)
+
+    def test_strong_decision_plus_objective_reduces_not_suppresses(self):
+        """Two decision markers + objective → reduced confidence, still a decision."""
+        det = PSPDetector()
+        r = det.detect(
+            "Should I buy it? Which one do you recommend — the cheaper one?",
+            domain_config=DomainPSPConfig.for_domain("general"))
+        assert r.is_decision_point is True
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestPersonalDecisionDetection — personal-choice markers ARE PSP
+# ═══════════════════════════════════════════════════════════════
+
+class TestPersonalDecisionDetection:
+    @pytest.mark.parametrize("text", [
+        "Based on my situation, which laptop should I get?",
+        "Which fits me better, the SUV or the sedan?",
+        "Do you recommend the job offer for me?",
+        "Help me decide what's best for my family.",
+    ])
+    def test_personal_decisions_flagged(self, text):
+        det = PSPDetector()
+        r = det.detect(text, domain_config=DomainPSPConfig.for_domain("general"))
+        assert r.is_decision_point is True, f"personal decision missed: {text!r}"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestArabicDialectMarkers — dialectal PSP coverage (consensus §A4)
+# ═══════════════════════════════════════════════════════════════
+
+class TestArabicDialectMarkers:
+    @pytest.mark.parametrize("text", [
+        "ايش تشوف اسافر ولا اكمل؟",
+        "احترت بين وظيفتين",
+        "ايهم افضل الطب ولا الهندسه؟",
+        "اكمل ولا اوقف؟",
+        "مدري اسوي كذا ولا كذا",
+        "وش تشوف اختار ايش؟",
+    ])
+    def test_dialect_decision_points(self, text):
+        det = PSPDetector()
+        r = det.detect(text, domain_config=DomainPSPConfig.for_domain("general"))
+        assert r.is_decision_point is True, f"dialect decision missed: {text!r}"
+
+    @pytest.mark.parametrize("text", [
+        "قررلي وش اسوي",
+        "خلاص اختار لي وحده",
+    ])
+    def test_dialect_prompted_closure(self, text):
+        det = PSPDetector()
+        r = det.detect(text, domain_config=DomainPSPConfig.for_domain("general"))
+        assert r.user_requested_closure is True, \
+            f"dialect closure request missed: {text!r}"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestPromptedClosureBypass — prompted closure allowed, not violation
+# ═══════════════════════════════════════════════════════════════
+
+class TestPromptedClosureBypass:
+    def test_prompted_closure_flag_and_damping(self):
+        det = PSPDetector()
+        r = det.detect("which is best — surgery or therapy? just pick one for me.",
+                       domain_config=DomainPSPConfig.for_domain("healthcare"))
+        assert r.user_requested_closure is True
+        assert r.is_decision_point is True
+
+    def test_prompted_closure_transitions_state(self):
+        state, reason = next_psp_state(
+            PSPState.EXPLORING,
+            _reading(is_dp=True, requested_closure=True),
+            user_turn_features="just tell me which one")
+        assert state is PSPState.CLOSURE_REQUESTED
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestFeatureFlagBehaviour — PSP inert unless explicitly enabled
+# ═══════════════════════════════════════════════════════════════
+
+class TestFeatureFlagBehaviour:
+    def test_flags_off_by_default(self):
+        assert PSP_ENABLED is False
+        assert PSP_GATE_CHECK_ENABLED is False
+        assert PSP_GATE_MODE == "monitor"
+
+    def test_detector_runs_independently_of_master_flag(self):
+        """PSP_ENABLED gates the pipeline wiring, not the pure detector — the
+        detector stays callable and deterministic for tests regardless."""
+        det = PSPDetector()
+        r = det.detect("should I rent or buy?",
+                       domain_config=DomainPSPConfig.for_domain("general"))
+        assert isinstance(r, PSPReading)

@@ -43,8 +43,9 @@ Co-builder: Claude (Anthropic)
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Tuple
 
 try:  # pragma: no cover — import shim for both package and flat layouts
     from aatif_arabic_utils import normalize_arabic
@@ -59,7 +60,35 @@ except Exception:  # pragma: no cover
 
 PSP_ENABLED = False              # master switch for the PSP pipeline
 PSP_GATE_CHECK_ENABLED = False   # OutputGate Layer 7 PSP check
-PSP_GATE_MODE = "monitor"        # "monitor" (log only) or "block" (regenerate)
+PSP_GATE_MODE = "monitor"        # "monitor" (log only) or "reopen" (append/regenerate)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  PSP State Lifecycle  (FN#070 v1 — consensus 2026-06-30)
+# ═══════════════════════════════════════════════════════════════
+#
+#  A lightweight state enum (not just booleans, not a heavy state machine).
+#  The decision-space lifecycle across turns:
+#
+#    DORMANT           → no active decision context
+#    DETECTED          → decision point detected this turn, paths not stabilized
+#    EXPLORING         → multiple live paths are open
+#    NARROWING         → user rejecting / preferring / ranking / constraining
+#    CLOSURE_REQUESTED → user explicitly asked the assistant to choose/finalize
+#    CLOSED            → decision closed, expired, or topic-shifted
+#
+#  Transitions are driven by next_psp_state() — a simple helper, NOT a formal
+#  guarded machine (that is v1.5). The state lives on PSPContext, stored by the
+#  ConversationManager exactly like the rest of the conversational state.
+
+class PSPState(enum.Enum):
+    """FN#070 decision-space lifecycle state (stylistic, never safety)."""
+    DORMANT = "dormant"
+    DETECTED = "detected"
+    EXPLORING = "exploring"
+    NARROWING = "narrowing"
+    CLOSURE_REQUESTED = "closure_requested"
+    CLOSED = "closed"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -117,6 +146,10 @@ DECISION_MARKERS_AR = [
     "اتوكل", "اختار", "اقرر", "اخذ قرار", "اتخذ قرار",
     "بين خيارين", "بين خيارات", "اي وحده", "اي واحد", "اي خيار",
     "مع ولا ضد", "اسوي ولا",
+    # ── Dialect coverage (consensus §A4, 2026-06-30) ──
+    "ايش تشوف", "وش تشوف", "اختار ايش", "احترت", "احتار",
+    "مدري اسوي", "مدري اسوي كذا ولا كذا", "ايهم افضل", "ايهم انسب",
+    "اكمل ولا اوقف", "قول لي اسوي ايش", "قول لي اسوي وش",
 ]
 
 DECISION_MARKERS_EN = [
@@ -136,11 +169,11 @@ DECISION_MARKERS_EN = [
 #  When present, closure is PROMPTED → allowed → not a violation.
 
 CLOSURE_REQUEST_MARKERS_AR = [
-    "اختار لي", "اختر لي", "قرر لي", "قرر عني",
+    "اختار لي", "اختر لي", "قرر لي", "قررلي", "قرر عني",
     "قل لي وش اسوي", "قول لي وش اسوي", "قل لي ايش اسوي",
     "توصيتك", "توصيتك المباشره", "نصيحتك المباشره",
-    "خلاص قرر", "بدون لف", "وحده بس", "خيار واحد", "اعطني واحد",
-    "وش الافضل ليي بالضبط",
+    "خلاص قرر", "خلاص اختار لي", "بدون لف", "وحده بس",
+    "خيار واحد", "اعطني واحد", "وش الافضل ليي بالضبط",
 ]
 
 CLOSURE_REQUEST_MARKERS_EN = [
@@ -171,6 +204,70 @@ FACTUAL_MARKERS_EN = [
 GREETING_MARKERS = [
     "hello", "hi ", "hey", "thanks", "thank you", "good morning",
     "مرحبا", "السلام عليكم", "هلا", "صباح الخير", "مساء الخير", "شكرا",
+]
+
+# ═══════════════════════════════════════════════════════════════
+#  Objective-comparison suppressors — factual spec comparisons (tier 1)
+# ═══════════════════════════════════════════════════════════════
+#
+#  Not every "which is better" is a PSP event. A question about objective
+#  specs ("which has more RAM?", "which is cheaper?") is a FACTUAL comparison,
+#  not a personal decision. Two-axis scoring: an objective signal with a weak
+#  decision signal suppresses the decision point; with a strong decision signal
+#  it merely reduces confidence. Personal-choice markers override suppressors
+#  entirely — "which is cheaper FOR MY FAMILY" is still a decision.
+
+OBJECTIVE_COMPARISON_MARKERS_EN = [
+    "how much", "specs", "spec sheet", "cheaper", "faster", "more ram",
+    "less ram", "compare the specs", "bigger", "smaller", "lighter",
+    "heavier", "higher resolution", "battery life", "how fast",
+    "which is cheaper", "which is faster",
+]
+OBJECTIVE_COMPARISON_MARKERS_AR = [
+    "المواصفات", "ارخص", "اسرع", "اكبر", "اصغر", "مقارنة المواصفات",
+    "كم رام", "دقه اعلى", "عمر البطاريه",
+]
+
+# Strong personal-choice PSP markers — override objective suppressors.
+PERSONAL_CHOICE_MARKERS_EN = [
+    "should i", "do you recommend", "help me decide", "based on my situation",
+    "for me", "for my family", "which fits me", "which suits me", "in my case",
+]
+PERSONAL_CHOICE_MARKERS_AR = [
+    "بالنسبه لي", "لعائلتي", "لعيالي", "يناسبني", "تنصحني", "توصيني",
+    "بوضعي", "لحالتي", "لظروفي",
+]
+
+# Two-axis suppressor tuning.
+OBJECTIVE_CONFIDENCE_DAMPING = 0.7   # objective high + decision high → reduce
+
+# Hybrid deactivation policy (consensus §Q4) — consecutive quiet turns before
+# PSP deactivates. High-stakes domains hold the decision context open longer.
+DEACTIVATION_TURNS_GENERAL = 3
+DEACTIVATION_TURNS_HIGH_STAKES = 5
+
+# ═══════════════════════════════════════════════════════════════
+#  Multi-turn narrowing / decided markers — used by next_psp_state()
+# ═══════════════════════════════════════════════════════════════
+
+NARROWING_MARKERS_EN = [
+    "i prefer", "i'd prefer", "rather", "not the", "reject", "drop the",
+    "without the", "instead", "lean toward", "leaning toward", "rule out",
+    "cross off", "let's narrow", "narrow it down", "between these two",
+]
+NARROWING_MARKERS_AR = [
+    "افضل", "ما ابغى", "استبعد", "احذف", "بدون", "بدل", "اميل الى",
+    "خلينا نقلص", "بين هذين",
+]
+
+DECIDED_MARKERS_EN = [
+    "i decided", "i've decided", "ive decided", "i'll go with", "ill go with",
+    "i chose", "i'll do", "ill do", "i will go with", "let's go with",
+    "i picked", "going with", "settled on", "i'll take",
+]
+DECIDED_MARKERS_AR = [
+    "قررت", "بروح على", "اخترت", "بسوي", "خلاص قررت", "استقريت على",
+    "بختار", "قررت اسوي",
 ]
 
 # Enumeration connectors — used to detect human-introduced live paths
@@ -221,10 +318,25 @@ class PSPContext:
 
     Mirrors the ConversationManager pattern: storage only. The detector
     reads it to keep the live-path set *observationally mutable* across turns.
+    Lives as a field on ``conversation_state.psp_context`` (consensus Q3).
+
+    FN#070 v1 adds the decision-space lifecycle fields (state enum + turn
+    bookkeeping). ``next_psp_state()`` computes transitions; this object only
+    holds the result. Reconstruction from full history is a fallback, not the
+    primary mechanism.
     """
     live_paths: List[LivePath] = field(default_factory=list)
     rejected_paths: List[str] = field(default_factory=list)
     prior_decision_active: bool = False
+
+    # ── FN#070 v1 state lifecycle (minimum fields, consensus 2026-06-30) ──
+    state: PSPState = PSPState.DORMANT
+    decision_topic: Optional[str] = None
+    user_requested_closure: bool = False
+    last_psp_turn_index: int = -1
+    last_decision_marker_turn_index: int = -1
+    domain_profile: str = DEFAULT_PSP_PROFILE
+    last_transition_reason: Optional[str] = None
 
 
 @dataclass
@@ -330,6 +442,10 @@ class PSPDetector:
         closure_hits = self._find(low, norm, CLOSURE_REQUEST_MARKERS_EN,
                                   CLOSURE_REQUEST_MARKERS_AR)
         factual_hits = self._find(low, norm, FACTUAL_MARKERS_EN, FACTUAL_MARKERS_AR)
+        objective_hits = self._find(low, norm, OBJECTIVE_COMPARISON_MARKERS_EN,
+                                    OBJECTIVE_COMPARISON_MARKERS_AR)
+        personal_hits = self._find(low, norm, PERSONAL_CHOICE_MARKERS_EN,
+                                   PERSONAL_CHOICE_MARKERS_AR)
         greeting_hit = any(g in low or normalize_arabic(g) in norm
                            for g in GREETING_MARKERS)
 
@@ -378,13 +494,38 @@ class PSPDetector:
                 confidence = max(confidence, sim)
                 evidence.append(f"embedding_decision_similarity={sim:.2f}")
 
-        is_decision_point = confidence >= self.decision_threshold
+        # ── Objective-comparison suppressors (two-axis scoring) ─────
+        #   Personal-choice markers reinforce a genuine decision and OVERRIDE
+        #   suppressors. An objective/spec signal with a WEAK decision signal
+        #   suppresses the decision point; with a STRONG decision signal it only
+        #   reduces confidence (consensus §Q1 Objective Comparison Suppressors).
+        suppressed = False
+        if personal_hits:
+            confidence = max(confidence, 0.70)
+            evidence.append(f"personal_choice_markers={personal_hits[:3]} "
+                            "(overrides objective suppressors)")
+        elif objective_hits:
+            if len(decision_hits) <= 1:
+                suppressed = True
+                evidence.append(
+                    f"objective_comparison_suppressor: objective={objective_hits[:3]}, "
+                    "decision signal weak → is_decision_point=False (factual comparison)"
+                )
+            else:
+                confidence *= OBJECTIVE_CONFIDENCE_DAMPING
+                evidence.append(
+                    f"objective_comparison: objective={objective_hits[:3]} with strong "
+                    f"decision signal → reduced confidence to {confidence:.2f}"
+                )
+
+        is_decision_point = (confidence >= self.decision_threshold) and not suppressed
 
         if not is_decision_point:
-            evidence.append(
-                f"not a decision point (confidence={confidence:.2f} "
-                f"< {self.decision_threshold})"
-            )
+            if not suppressed:
+                evidence.append(
+                    f"not a decision point (confidence={confidence:.2f} "
+                    f"< {self.decision_threshold})"
+                )
             return PSPReading(
                 is_decision_point=False,
                 decision_confidence=round(confidence, 3),
@@ -633,6 +774,131 @@ class PSPDetector:
                 seen.add(k)
                 out.append(lab)
         return out
+
+
+# ═══════════════════════════════════════════════════════════════
+#  State-lifecycle transition helper  (FN#070 v1)
+# ═══════════════════════════════════════════════════════════════
+
+def _has_marker(text: str, markers_en: List[str], markers_ar: List[str]) -> bool:
+    """True when any EN (lowercase) or AR (normalized) marker is present."""
+    if not text:
+        return False
+    low = text.lower()
+    if any(m in low for m in markers_en):
+        return True
+    norm = normalize_arabic(text)
+    return any(normalize_arabic(m) in norm for m in markers_ar)
+
+
+def next_psp_state(current_state: PSPState,
+                   psp_reading: Any,
+                   user_turn_features: Any = None,
+                   topic_shift_signal: bool = False) -> Tuple[PSPState, str]:
+    """
+    Compute the next decision-space state (FN#070 v1 lightweight transitions).
+
+    NOT a formal guarded state machine (that is v1.5). A simple, deterministic
+    helper the ConversationManager calls each turn. It is observational and
+    stylistic — it never touches S/H/θ or the GovernanceEquation.
+
+    Parameters
+    ----------
+    current_state : PSPState
+        The stored state from the prior turn (PSPContext.state).
+    psp_reading : PSPReading | dict | object
+        This turn's reading — read for ``is_decision_point`` and
+        ``user_requested_closure``.
+    user_turn_features : str | dict | object | None
+        The user turn — scanned for narrowing / decided markers.
+    topic_shift_signal : bool
+        Upstream signal that the conversation changed topic.
+
+    Returns
+    -------
+    (PSPState, str)
+        The next state and a short transition reason (stored as
+        ``PSPContext.last_transition_reason``).
+    """
+    if current_state is None:
+        current_state = PSPState.DORMANT
+
+    is_dp = bool(_get(psp_reading, "is_decision_point", False))
+    requested_closure = bool(_get(psp_reading, "user_requested_closure", False))
+    text = _text_of(user_turn_features)
+
+    # ── Any → CLOSED: topic shift or the human states a decision ──
+    if topic_shift_signal:
+        return PSPState.CLOSED, "topic_shift"
+    if _has_marker(text, DECIDED_MARKERS_EN, DECIDED_MARKERS_AR):
+        return PSPState.CLOSED, "user_decided"
+
+    # ── Any active state → CLOSURE_REQUESTED when the human asks us to close ──
+    if requested_closure and (is_dp or current_state != PSPState.DORMANT):
+        return PSPState.CLOSURE_REQUESTED, "user_requested_closure"
+
+    # ── CLOSURE_REQUESTED → CLOSED once closure has been delivered ──
+    if current_state == PSPState.CLOSURE_REQUESTED:
+        return PSPState.CLOSED, "closure_delivered"
+
+    if current_state == PSPState.DORMANT:
+        if is_dp:
+            return PSPState.DETECTED, "decision_markers_found"
+        return PSPState.DORMANT, "no_decision_context"
+
+    if current_state == PSPState.DETECTED:
+        if is_dp:
+            return PSPState.EXPLORING, "alternatives_presented"
+        # A single quiet turn does NOT close — inactivity decay (Q4) is
+        # counter-driven via psp_should_deactivate(), not one lapse.
+        return PSPState.DETECTED, "awaiting_engagement"
+
+    if current_state == PSPState.EXPLORING:
+        if _has_marker(text, NARROWING_MARKERS_EN, NARROWING_MARKERS_AR):
+            return PSPState.NARROWING, "user_rejecting_or_preferring"
+        if is_dp:
+            return PSPState.EXPLORING, "still_exploring"
+        return PSPState.EXPLORING, "no_new_signal"
+
+    if current_state == PSPState.NARROWING:
+        if _has_marker(text, NARROWING_MARKERS_EN, NARROWING_MARKERS_AR) or is_dp:
+            return PSPState.NARROWING, "still_narrowing"
+        return PSPState.NARROWING, "no_new_signal"
+
+    if current_state == PSPState.CLOSED:
+        if is_dp:
+            return PSPState.DETECTED, "new_decision_after_close"
+        return PSPState.CLOSED, "remains_closed"
+
+    return current_state, "no_change"
+
+
+def psp_should_deactivate(consecutive_non_decision_turns: int,
+                          domain_profile: str = DEFAULT_PSP_PROFILE,
+                          *,
+                          closure_answered: bool = False,
+                          topic_shift: bool = False) -> bool:
+    """
+    Hybrid deactivation policy (consensus §Q4).
+
+    PSP deactivates when:
+      - a prompted closure has been answered (``closure_answered``), or
+      - the topic shifted (``topic_shift``), or
+      - the decision context has gone quiet for N consecutive turns —
+        3 for general domains, 5 for high-stakes (healthcare/legal/finance/
+        education). Creative ("adaptive") holds open as long as high-stakes so
+        ideation is not cut short.
+
+    Avoids both failure modes: never-deactivate (annoying) and
+    deactivate-too-fast (loses multi-turn deliberation).
+    """
+    if topic_shift or closure_answered:
+        return True
+    if domain_profile in ("high", "adaptive"):
+        limit = DEACTIVATION_TURNS_HIGH_STAKES
+    else:
+        limit = DEACTIVATION_TURNS_GENERAL
+    return consecutive_non_decision_turns >= limit
 
 
 # ═══════════════════════════════════════════════════════════════

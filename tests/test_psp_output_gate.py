@@ -76,6 +76,7 @@ def decision_reading(detector):
 
 ON_MONITOR = PSPGateConfig(PSP_GATE_CHECK_ENABLED=True, PSP_GATE_MODE="monitor")
 ON_BLOCK = PSPGateConfig(PSP_GATE_CHECK_ENABLED=True, PSP_GATE_MODE="block")
+ON_REOPEN = PSPGateConfig(PSP_GATE_CHECK_ENABLED=True, PSP_GATE_MODE="reopen")
 
 PREMATURE = "You should definitely get the surgery. It's the right call."
 OPEN_RESPONSE = (
@@ -141,6 +142,32 @@ class TestMonitorMode:
         assert r.premature_closure is False
         assert r.log_messages == []
         assert "PSP_CLOSURE_VIOLATION_LOGGED" not in r.flags
+
+
+# ═══════════════════════════════════════════════════════════════
+#  TestReopenMode — canonical name for corrective re-opening (§Q5)
+# ═══════════════════════════════════════════════════════════════
+
+class TestReopenMode:
+    def test_reopen_reopens_on_premature_closure(self, gate, decision_reading):
+        r = gate.check_psp(PREMATURE, decision_reading, ON_REOPEN)
+        assert r.mode == "reopen"
+        assert r.premature_closure is True
+        assert r.regenerated is True
+        assert r.text != PREMATURE
+        assert "PSP_PREMATURE_CLOSURE_REGENERATED" in r.flags
+
+    def test_reopen_leaves_good_response_unchanged(self, gate, decision_reading):
+        r = gate.check_psp(OPEN_RESPONSE, decision_reading, ON_REOPEN)
+        assert r.regenerated is False
+        assert r.text == OPEN_RESPONSE
+
+    def test_block_is_deprecated_alias_of_reopen(self, gate, decision_reading):
+        """'block' must still behave identically (backward compatibility)."""
+        blk = gate.check_psp(PREMATURE, decision_reading, ON_BLOCK)
+        rop = gate.check_psp(PREMATURE, decision_reading, ON_REOPEN)
+        assert blk.regenerated == rop.regenerated is True
+        assert blk.text == rop.text
 
 
 # ═══════════════════════════════════════════════════════════════

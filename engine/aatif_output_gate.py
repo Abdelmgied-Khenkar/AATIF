@@ -105,14 +105,16 @@ class PSPGateConfig:
     caller opts in.
     """
     PSP_GATE_CHECK_ENABLED: bool = _PSP_GATE_CHECK_ENABLED_DEFAULT
-    PSP_GATE_MODE: str = _PSP_GATE_MODE_DEFAULT   # "monitor" or "block"
+    # "monitor" (log only) or "reopen" (append/regenerate the possibility space).
+    # "block" is accepted as a deprecated alias of "reopen" (consensus §Q5).
+    PSP_GATE_MODE: str = _PSP_GATE_MODE_DEFAULT
 
 
 @dataclass
 class PSPGateReading:
     """
     Output of check_psp(). ``text`` is what should be sent (unchanged in
-    monitor mode; possibly re-opened in block mode). Carries an audit trail
+    monitor mode; possibly re-opened in reopen mode). Carries an audit trail
     of what Layer 7 observed — it never blocks.
     """
     text: str = ""
@@ -955,8 +957,9 @@ class AATIFOutputGate:
         Behaviour by config:
           - PSP_GATE_CHECK_ENABLED False → pure pass-through (default).
           - mode "monitor" (default)     → log premature closure, pass through.
-          - mode "block"                 → re-open the space on premature
-                                            closure (regenerate), else pass.
+          - mode "reopen"                → re-open the space on premature
+                                            closure (append/regenerate), else
+                                            pass. "block" is a deprecated alias.
 
         A "premature closure" is an UNPROMPTED single-path collapse on a
         decision point. Prompted closure (user_requested_closure) is allowed
@@ -990,15 +993,16 @@ class AATIFOutputGate:
         premature = self._detects_premature_closure(reading.text, psp_reading)
         reading.premature_closure = premature
 
-        # ── Block mode: regenerate on premature closure ──
-        if cfg.PSP_GATE_MODE == "block":
+        # ── Reopen mode: re-open the space on premature closure ──
+        #    ("block" is accepted as a deprecated alias — consensus §Q5.)
+        if cfg.PSP_GATE_MODE in ("reopen", "block"):
             if premature:
                 reading.text = self._regenerate_with_alternatives(
                     response_text, psp_reading, reading)
                 reading.regenerated = True
                 reading.flags.append("PSP_PREMATURE_CLOSURE_REGENERATED")
                 _psp_logger.info(
-                    "PSP Layer 7 (block): re-opened possibility space on "
+                    "PSP Layer 7 (reopen): re-opened possibility space on "
                     "premature closure"
                 )
             else:
@@ -1075,7 +1079,7 @@ class AATIFOutputGate:
         text: str, psp_reading, reading: PSPGateReading
     ) -> str:
         """
-        Block mode — re-open the possibility space (corrective, not a block).
+        Reopen mode — re-open the possibility space (corrective, not a block).
 
         The gate has no LLM, so it appends a re-opening that names the bounded
         set and hands the final choice back to the human. This converts a
