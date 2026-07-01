@@ -294,7 +294,9 @@ class PVMReading:
     """
     state: PVMState
     confidence: float                    # [0,1] how certain we are of the state
-    should_pause: bool                   # recommendation to R equation
+    recommend_behavioral_pause: bool                   # Behavioural recommendation to R equation only.
+    # MUST NOT be interpreted as runtime block, safety bypass, or governance override.
+    # PVM is STYLISTIC (B5). It never touches S, H, θ, or the GovernanceEquation.
     pause_type: str                      # "full_wait" | "brief_ack" | "shortened" | "normal"
     recommended_acknowledgment: str      # Arabic-first acknowledgment text
     evidence: List[str] = field(default_factory=list)
@@ -452,7 +454,7 @@ class PVMDetector:
                 return PVMReading(
                     state=PVMState.REACTIVATING,
                     confidence=0.90,
-                    should_pause=False,
+                    recommend_behavioral_pause=False,
                     pause_type=PAUSE_NORMAL,
                     recommended_acknowledgment=ACKNOWLEDGMENTS["returning"],
                     evidence=evidence,
@@ -477,7 +479,7 @@ class PVMDetector:
             return PVMReading(
                 state=PVMState.ACTIVE,
                 confidence=not_busy_conf,
-                should_pause=False,
+                recommend_behavioral_pause=False,
                 pause_type=PAUSE_NORMAL,
                 recommended_acknowledgment="",
                 evidence=evidence,
@@ -560,10 +562,10 @@ class PVMDetector:
             confidence, threshold, prior_state, signals, evidence, config
         )
 
-        should_pause = pause_type != PAUSE_NORMAL
+        recommend_behavioral_pause = pause_type != PAUSE_NORMAL
         if PVM_MONITOR_ONLY:
-            should_pause = False
-            evidence.append("PVM_MONITOR_ONLY=True → should_pause forced False")
+            recommend_behavioral_pause = False
+            evidence.append("PVM_MONITOR_ONLY=True → recommend_behavioral_pause forced False")
 
         # ── Estimate return likelihood ─────────────────────────
         return_likelihood = self._estimate_return_likelihood(
@@ -573,7 +575,7 @@ class PVMDetector:
         return PVMReading(
             state=state,
             confidence=round(confidence, 3),
-            should_pause=should_pause,
+            recommend_behavioral_pause=recommend_behavioral_pause,
             pause_type=pause_type,
             recommended_acknowledgment=ack,
             evidence=evidence,
@@ -1032,7 +1034,7 @@ def pvm_audit_hash(reading: PVMReading) -> str:
     payload = json.dumps({
         "state": reading.state.value,
         "confidence": reading.confidence,
-        "should_pause": reading.should_pause,
+        "recommend_behavioral_pause": reading.recommend_behavioral_pause,
         "pause_type": reading.pause_type,
         "signals": reading.signals_detected,
         "evidence_count": len(reading.evidence),
