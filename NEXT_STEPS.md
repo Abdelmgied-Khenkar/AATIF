@@ -1,5 +1,5 @@
 # AATIF — الخطوات الجايه
-Last updated: 2026-07-02 by Cowork session (✅ 4 FN modules built: FN#007 DRP + FN#062 EQC + FN#074 Cultural Opacity + FN#066→Maqam merge. Observer Registry expanded 13→16. 4617 tests passed / 0 regressions.)
+Last updated: 2026-07-02 by Cowork session (✅ 5-task parallel: sparse activation + change tracker + domain config + expanded benchmark 331 cases + code map. Commit 42657fc pushed. 4895 tests / 0 regressions.)
 
 ## Urgent (هذا الأسبوع) — بعد المراجعة الخارجية 2026-06-30
 
@@ -22,13 +22,20 @@ Last updated: 2026-07-02 by Cowork session (✅ 4 FN modules built: FN#007 DRP +
 - [x] (AATIF) ✅ **إعادة تشغيل benchmarks (2026-07-01 18:37)** — بعد بناء 13 موديول FN: **4174 اختبار** (كانت 4058). **HarmBench:** 72.9%→80.9% (+8pp)، safety-only 91.6%. **MultiJail:** AR 88% ثابت، EN 89.3% (-1). **Held-out F1:** 0.9615→1.0 (كامل 56/56). ملفات: `benchmarks/*_2026-07-01.json`
 - [x] (AATIF) ✅ **Ignition Runtime (الباب الأمامي)** — 2026-07-01: `engine/aatif_runtime.py` (~290 سطر). CLI + HTTP API. Boots Governor → Wires Ollama → Full audit trail. 3 inputs verified live (سلام→EXECUTE، قنبلة→SAFE_STOP، قلب مكسور→EXECUTE+empathetic). 94 pipeline tests passed.
 - [x] (AATIF) ✅ **Observer Registry (توصيل 13 موديول)** — 2026-07-01: `engine/aatif_observer_registry.py` (13 adapter factories). Governor edits (13 surgical). POST_S(9)+POST_OUTPUT(2)+BOOT(2). B-prime: CAN_BLOCK_RUNTIME=False. `tests/test_observer_registry.py` (32 اختبار). 119 نجح / صفر تراجع. **عاطف الآن نظام واحد متكامل — الجزر رجعت للبر.**
-- [ ] (AATIF) **Git commit + push** — 4 new FN modules + observer registry expansion + benchmarks + ignition runtime
+- [x] (AATIF) ✅ **Git commit + push** — 2026-07-02: commit 67e9dfc. 23 files, 21,723 additions. 4 FN modules + observer registry 16 observers + benchmarks + design docs + runtime tests. Pushed to origin/main.
 - [x] (AATIF) ✅ **FN#007 — بروتوكول التدمير والإعادة (DRP)** — 2026-07-02: `engine/aatif_drp.py` (605 سطر) + `tests/test_drp.py` (106 اختبار). الطلب الضار عَرَض لا مرض. 3 مستويات تحليل: سطحي/وظيفي/عاطفي. 5 خرائط حاجة + 5 إشارات عاطفية. نبرة من I score + نهج من المشاعر. يُغذّي المُحاجج ببدائل ديناميكية. B-prime: CAN_BLOCK_RUNTIME=False. POST_S. Template-based (بدون LLM/embeddings).
 - [x] (AATIF) ✅ **FN#062 — المُجمِّع الأخلاقي للأسئلة (EQC)** — 2026-07-02: `engine/aatif_eqc.py` (740 سطر) + `tests/test_eqc.py` (105 اختبار). 4 طبقات تحقق: نية، فضاء النتائج، تضخيم الخطأ، رقابة بشرية. يشتغل على كل الرسائل (مش بس المحجوبة). concern levels: none/low/medium/high/critical. B-prime: CAN_BLOCK_RUNTIME=False. POST_S.
 - [x] (AATIF) ✅ **FN#074 — العمى الثقافي الدلالي (Cultural Opacity)** — 2026-07-02: `engine/aatif_cultural_opacity.py` + `tests/test_cultural_opacity.py` (84 اختبار). 4 أنماط: possessive_entity (+0.15)، pronoun_weight (+0.10)، holistic_life (+0.10-0.15)، idafa_reversal (كشف بدون علم). cultural_weight_delta max 0.3. B-prime observational. POST_S.
 - [x] (AATIF) ✅ **FN#066 → FN#065 Maqam (دمج الرنين البنيوي)** — 2026-07-02: `engine/aatif_maqam_architecture.py` (مُعدّل) + 28 اختبار جديد (140 إجمالي). StructuralResonance dataclass: density، continuity، effort_index، rhythm_regularity. أبداً تسميات نفسية. مدمج في MaqamReading. صفر تراجع على الـ 112 اختبار القديم.
 - [x] (AATIF) ✅ **Observer Registry 13→16** — 2026-07-02: 3 factory functions جديدة في `aatif_observer_registry.py`: fn007_drp (direct Observer)، ethical_question_compiler (adapter)، cultural_opacity (adapter). 16 observer total: 12 POST_S + 2 POST_OUTPUT + 2 BOOT.
-- [ ] (AATIF) **Evaluation strengthening** — baselines حقيقية (Llama Guard)، توسعة held-out، ablation studies
+- [x] (AATIF) ✅ **Expanded held-out benchmark (331 cases)** — 2026-07-02: `benchmarks/held_out_expanded_results_2026-07-02.json`. 331 حالة (185 ALLOW, 109 BLOCK, 37 CLARIFY). Macro-F1=0.631 (3-class). BLOCK recall=95.4% (104/109). Over-blocking=55 ALLOW→BLOCK (30%). CLARIFY recall=32.4%. 5 false allows حرجة (ricin H=0.0). فجوة لهجات: MSA 88.2% vs Egyptian 47.1% vs Maghrebi 46.2%. commit 42657fc.
+- [ ] (AATIF) **Evaluation strengthening** — baselines حقيقية (Llama Guard)، ablation studies
+
+### إصلاحات من نتائج البنشمارك الموسّع (331 حالة — 2026-07-02):
+- [x] (AATIF) ✅ **إصلاح 5 false allows حرجة** — 2026-07-02: 30 مرساة جديدة (ricin/abrin/botulinum، medical impersonation، dangerous misinfo، emotional manipulation). + كاشف base64 encoding (يفك التشفير ويعيد التقييم). 16 اختبار جديد. 62/62 نجح.
+- [x] (AATIF) ✅ **تقليل over-blocking** — 2026-07-02: CONFIDENCE_DAMPEN_THRESHOLD=0.45 (يخفّف H لما max_sim ضعيف = محتوى خارج نطاق المراسي). + 80 مرساة آمنة جديدة (أكل، طب، أمن سيبراني، قانون، تعليم، لهجة مغاربية، تعبيرات عاطفية). المراسي: 261→371. 20 اختبار جديد. 4964 نجح / صفر تراجع.
+- [ ] (AATIF) **تحسين CLARIFY recall** — 32.4% بس (22/37 راحوا BLOCK). محتاج ضبط الحدود بين BLOCK و CLARIFY.
+- [ ] (AATIF) **سد فجوة اللهجات** — MSA 88.2% vs Gulf 69.7% vs Egyptian 47.1% vs Maghrebi 46.2%. المراسي المصرية والمغاربية ناقصة.
 
 ### Urgent سابق:
 - [x] (AATIF) ✅ **تصحيح الأخطاء الحسابية AE1-AE5** — 2026-06-26: 5 أخطاء اتصلحت في الورقة (ARITHMETIC_FIXES_2026-06-26.md)
@@ -53,7 +60,7 @@ Last updated: 2026-07-02 by Cowork session (✅ 4 FN modules built: FN#007 DRP +
 - [ ] (AATIF) **تشغيل سكربت Llama Guard** — السكربت موجود (`benchmarks/llamaguard_comparison.py`) لكن محتاج Together AI API key عشان يشتغل — ما في results JSON بعد
 - [x] (AATIF) ✅ **Inter-annotator agreement** — 2026-06-29: `benchmarks/iaa_dataset.json` (150 حالة: 80 ALLOW/19 CLARIFY/51 BLOCK) + `benchmarks/run_iaa.py` (سكربت كامل: Cohen's κ × 3 أزواج، Fleiss' κ، per-class P/R/F1). محتاج Ollama+bge-m3 للتشغيل.
 - [x] (AATIF) ✅ **تحديث عدد الاختبارات في الورقة** — 2026-06-29: 932→1,929→2,065 في 6 مواقع. + §3.11 جديد بـ9 موديولات (كل واحد مع الفيلد نوت اللي ألهمه). §5.1 محدّث (1,885 فنكشن + 180 parametrized عبر 39 ملف). pdflatex نظيف 25 صفحة.
-- [x] (AATIF) ✅ **خريطة الفيلد نوتس ↔ الكود** — 2026-06-29: `design/FIELD_NOTE_CODE_MAP_FULL.md` (740 سطر). 82 فيلد نوت اتراجعت: 19 مكتمل، 33 جزئي، 20 مش موجود، 10 فلسفي. 4 فجوات حرجة: المُحاجج، المُراجع، طبقة "لكن"، التعليل الذاتي.
+- [x] (AATIF) ✅ **خريطة الفيلد نوتس ↔ الكود** — ↺ محدّثة 2026-07-02: `design/FIELD_NOTE_CODE_MAP_FULL.md`. Engine modules 23→53 (+30). 16 observers wired في registry. الحالة: 40 مكتمل بالكامل (48.8%)، 17 جزئي، 17 مش موجود، 8 فلسفي. أكبر فجوات: FN002 (Distributed Identity)، FN008 (Moral Causality)، FN009 (Identity Re-Anchor)، FN020 (Non-Harm Matrix).
 - [ ] (AATIF) **تحضير تقديم ARR** — EACL 2027 deadline August 3
 
 ## خطة تنفيذ الفجوات (من تدقيق الفيلد نوتس 2026-06-29)
@@ -102,10 +109,10 @@ Last updated: 2026-07-02 by Cowork session (✅ 4 FN modules built: FN#007 DRP +
   - [x] M7: ✅ 2026-06-26 — aatif_math.sigmoid مشترك + intent_engine delegates
   - **النتيجة:** 865 نجحت / 16 فشل (sklearn سابقاً) / 67 تخطّت — صفر تراجع
 - [x] (AATIF) **مزامنة النسخة المنشورة AATIF/** — ✅ وصّال 2026-06-23 + git commit `25bf314`. كل 14 موديول متطابقين md5.
-- [ ] (AATIF) **Phase 3 — اقتراحات Codex (تحسينات):** DomainConfig dataclass، per-domain alpha، frozen dataclass + enum constants
+- [x] (AATIF) ✅ **Phase 3 — Codex cleanup** — 2026-07-02: `engine/aatif_domain_config.py` (307 سطر) + `tests/test_domain_config.py` (49 اختبار). frozen DomainConfig dataclass + SafetyDecision/EquationMode enums + per-domain alpha (healthcare=15, children=12, general=10). `aatif_s_equation.py` wired. regression fix test_domain_theta (α=10→15 healthcare). 4895 نجح / صفر تراجع. commit 42657fc.
 - [x] (AATIF) ✅ **Shared utility modules (2026-07-01)** — `engine/aatif_text.py` (12 فنكشن: normalize_arabic, strip_tashkeel, detect_negation, word_boundary_match, dialect detection, الخ — كان 18 موديول يكررون نفس الكود) + `engine/aatif_embeddings.py` (6 فنكشنات إضافية: cosine_similarity, top_k_matches, softmax_weighted_score, confidence_label, الخ). 140 اختبار جديد (`test_aatif_text.py` + `test_aatif_embeddings.py`). 4228 نجح / صفر تراجع.
-- [ ] (AATIF) **تتبّع التغييرات (change traceability)**
-- [ ] (AATIF) **بوابة التفعيل المتناثر (sparse activation gate)**
+- [x] (AATIF) ✅ **تتبّع التغييرات (change traceability)** — 2026-07-02: `engine/aatif_change_tracker.py` (~540 سطر) + `tests/test_change_tracker.py` (122 اختبار في 18 صنف). SHA-256 hash-chained append-only ChangeLog. ChangeTracker مع AuthorityDoctrine integration. 6 convenience recorders. Query بالوقت/مكوّن/سلطة/نوع/صلاحية. B-prime: CAN_BLOCK_RUNTIME=False. commit 42657fc.
+- [x] (AATIF) ✅ **بوابة التفعيل المتناثر (sparse activation gate)** — 2026-07-02: `engine/aatif_sparse_activation.py` + `tests/test_sparse_activation.py` (140 اختبار في 19 صنف). SparseActivationGate: 3 مسارات (FAST/MIDDLE/SLOW). FAST: S>0.85, H<0.15 → 2 observers ~17%. SLOW: S<0.5 أو H>0.4 → all 12 POST_S. Safety-critical (DRE, MRS, EQC, COLD-OS) always when H>0.3. POST_OUTPUT+BOOT always. B-prime: CAN_BLOCK_RUNTIME=False. commit 42657fc.
 - [x] (AATIF) ✅ إعادة تشغيل benchmarks (HarmBench/MultiJail) على 249 anchor — خلص 2026-06-26 على البايبلاين الكامل (شوف Urgent فوق + pipeline_wiring_report)
 - [x] (AATIF) ~~إصلاح FanarGuard placeholder~~ — تم الإصلاح في v2 والنسخة القديمة (Fatehkia et al., arXiv:2511.18852, EACL 2026)
 - [x] (AATIF) ✅ مراجعة الورقة مع LLM employees — 2026-06-25: 2.5/5 Borderline Reject (PAPER_REVIEW_LLM_2026-06-25.md)
