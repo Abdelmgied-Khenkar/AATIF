@@ -327,6 +327,30 @@ if HAS_MULTI_INTENT:
 else:
     _COLLISION_SEVERITY = {}
 
+# ---------------------------------------------------------------------------
+# Observer Registry — سجل المراقبين. Manages 13 disconnected FN modules as
+# B-prime observers (CAN_BLOCK_RUNTIME = False). When present, the Governor
+# runs POST_S observers after S(d), POST_OUTPUT observers after the LLM
+# response, and BOOT observers at boot time. Each observer enriches the
+# audit trail — none of them block or influence S(d). When absent, the
+# Governor works exactly as before.
+# ---------------------------------------------------------------------------
+try:
+    from aatif_observer_registry import (
+        ObserverRegistry, ObserverPhase, ObserverContext, ObserverResult,
+        build_registry,
+    )
+    HAS_OBSERVER_REGISTRY = True
+except ImportError:
+    try:
+        from engine.aatif_observer_registry import (
+            ObserverRegistry, ObserverPhase, ObserverContext, ObserverResult,
+            build_registry,
+        )
+        HAS_OBSERVER_REGISTRY = True
+    except ImportError:
+        HAS_OBSERVER_REGISTRY = False
+
 
 # ═══════════════════════════════════════════════════════════
 #  Decision constants
@@ -523,6 +547,13 @@ class GovernedResponse:
     # decisions ESCALATE/SAFE_SPLIT guidance is injected into governed_prompt.
     intent_collisions: Optional[object] = None  # CollisionResult
 
+    # ── Observer Registry results (13 FN modules, B-prime architecture) ──
+    # Each entry is an ObserverResult with module_name, phase, reading, flags,
+    # prompt_enrichment, and timing. All observers have CAN_BLOCK_RUNTIME=False.
+    # Present whenever the observer registry is wired and at least one observer
+    # ran (POST_S after S(d), POST_OUTPUT after the LLM response).
+    observer_results: list = field(default_factory=list)
+
     # ── Diagnostics ──
     stage_reached: str = ""
     processing_time_ms: float = 0.0
@@ -585,6 +616,7 @@ class AATIFGovernor:
         five_layer_intent: Optional[object] = None,
         logic_profile_scanner: Optional[object] = None,
         multi_intent_handler: Optional[object] = None,
+        observer_registry: Optional[object] = None,
         profile: str = "default",
         equation_mode: str = "gated",
         user_timezone: str = "Asia/Riyadh",
@@ -794,6 +826,18 @@ class AATIFGovernor:
         if multi_intent_handler is None and HAS_MULTI_INTENT:
             multi_intent_handler = MultiIntentCollisionHandler()
         self.multi_intent_handler = multi_intent_handler
+
+        # ── Observer Registry — سجل المراقبين (13 FN modules, B-prime) ──
+        # When present, discovers and auto-registers all available FN module
+        # observers. When absent (ImportError or caller explicitly passes None),
+        # the Governor works exactly as before. NEVER influences S(d). All
+        # observers have CAN_BLOCK_RUNTIME = False.
+        if observer_registry is None and HAS_OBSERVER_REGISTRY:
+            try:
+                observer_registry = build_registry()
+            except Exception:
+                observer_registry = None  # graceful — never break the pipeline
+        self.observer_registry = observer_registry
 
     # ───────────────────────────────────────────────────
     #  Backend health
@@ -1260,6 +1304,30 @@ class AATIFGovernor:
             message, s_result,
         )
 
+        # ── Observer Registry: POST_S phase (13 FN modules, B-prime) ──
+        # Run all POST_S observers AFTER S(d) so safety is never influenced.
+        # Each observer enriches the audit trail with metadata, flags, and
+        # optional prompt enrichment. None of them block — Governor is king.
+        post_s_results: list = []
+        if self.observer_registry is not None and HAS_OBSERVER_REGISTRY:
+            try:
+                post_s_ctx = ObserverContext(
+                    message=message,
+                    s_result=s_result,
+                    domain=domain,
+                    conversation_id=conversation_id,
+                    time_reading=self.time_sense.read(
+                        timestamp=timestamp,
+                        user_timezone=self.user_timezone,
+                    ) if hasattr(self, 'time_sense') else None,
+                    turn_index=0,
+                )
+                post_s_results = self.observer_registry.run_phase(
+                    ObserverPhase.POST_S, post_s_ctx,
+                )
+            except Exception:
+                post_s_results = []  # graceful — never break the pipeline
+
         # ════════════════════════════════════════════════
         #  SOVEREIGNTY — S(d) is the gatekeeper
         # ════════════════════════════════════════════════
@@ -1282,6 +1350,7 @@ class AATIFGovernor:
                 intent_layers=intent_layers,
                 logic_profile=logic_profile,
                 intent_collisions=intent_collisions,
+                observer_results=post_s_results,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             # Dynamic θ: record blocked decision for future θ adjustment
@@ -1320,6 +1389,7 @@ class AATIFGovernor:
                 intent_layers=intent_layers,
                 logic_profile=logic_profile,
                 intent_collisions=intent_collisions,
+                observer_results=post_s_results,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             # Dynamic θ: record blocked decision for future θ adjustment
@@ -1361,6 +1431,7 @@ class AATIFGovernor:
                 intent_layers=intent_layers,
                 logic_profile=logic_profile,
                 intent_collisions=intent_collisions,
+                observer_results=post_s_results,
             )
             self._remember(conversation_id, remember, message, None, timestamp)
             self._build_reasoning_trace(
@@ -1464,6 +1535,7 @@ class AATIFGovernor:
                         intent_collisions=intent_collisions,
                         oversight_result=oversight_result,
                         oversight_overridden=True,
+                        observer_results=post_s_results,
                     )
                     self._remember(
                         conversation_id, remember, message, None, timestamp
@@ -1511,6 +1583,12 @@ class AATIFGovernor:
         #  Compose the governed prompt (P instructions + R style + memory
         #  + triad context + response shape + justification for CLARIFY)
         # ════════════════════════════════════════════════
+        # Collect observer prompt enrichments for the governed prompt.
+        observer_enrichments = [
+            r.prompt_enrichment for r in post_s_results
+            if r.prompt_enrichment
+        ] if post_s_results else []
+
         governed_prompt = self._compose_prompt(
             message=message,
             domain=domain,
@@ -1525,6 +1603,7 @@ class AATIFGovernor:
             intent_layers=intent_layers,
             logic_profile=logic_profile,
             intent_collisions=intent_collisions,
+            observer_enrichments=observer_enrichments,
         )
 
         resp = GovernedResponse(
@@ -1548,6 +1627,7 @@ class AATIFGovernor:
             oversight_result=oversight_result,
             oversight_overridden=oversight_overridden,
             justification=justification_result,
+            observer_results=list(post_s_results),
         )
 
         # ── No LLM hook: stop at the governed prompt. The output gate only
@@ -1572,6 +1652,26 @@ class AATIFGovernor:
         # ════════════════════════════════════════════════
         llm_response = llm_fn(governed_prompt)
         resp.llm_response = llm_response
+
+        # ── Observer Registry: POST_OUTPUT phase (B-prime) ──
+        # Run POST_OUTPUT observers on the LLM draft BEFORE the gate so their
+        # flags are available for the audit trail. Observers may flag
+        # hallucinations (LBH) or phantom references (UCN) but NEVER block.
+        if self.observer_registry is not None and HAS_OBSERVER_REGISTRY:
+            try:
+                post_output_ctx = ObserverContext(
+                    message=message,
+                    s_result=s_result,
+                    domain=domain,
+                    conversation_id=conversation_id,
+                    llm_output=llm_response,
+                )
+                post_output_results = self.observer_registry.run_phase(
+                    ObserverPhase.POST_OUTPUT, post_output_ctx,
+                )
+                resp.observer_results = list(resp.observer_results) + post_output_results
+            except Exception:
+                pass  # graceful — never break the pipeline
 
         # C3: inject emergency guidance into the response BEFORE gating so the
         # gate's protocol-compliance check sees the required keywords and the
@@ -1647,6 +1747,7 @@ class AATIFGovernor:
         intent_layers: Optional[object] = None,
         logic_profile: Optional[object] = None,
         intent_collisions: Optional[object] = None,
+        observer_enrichments: Optional[list] = None,
     ) -> str:
         """
         Build the governed prompt the LLM would receive.
@@ -1876,6 +1977,15 @@ class AATIFGovernor:
                 )
                 if action:
                     lines.append(action)
+
+        # ── Observer enrichments (POST_S FN modules, B-prime) ──
+        if observer_enrichments:
+            active_enrichments = [e for e in observer_enrichments if e.strip()]
+            if active_enrichments:
+                lines.append("")
+                lines.append("## مراقبو ما بعد التقييم — observer enrichments")
+                for enrichment in active_enrichments:
+                    lines.append(enrichment)
 
         # ── The user message ──
         lines.append("")
@@ -2130,6 +2240,14 @@ class AATIFGovernor:
             gov = cls(s_engine=backend, on_degraded="raise", verify_backend=False)
         else:
             gov = cls(on_degraded="raise", verify_backend=True)
+
+        # ── Run BOOT-phase observers (binding_map, behavioural_twin) ──
+        if gov.observer_registry is not None and HAS_OBSERVER_REGISTRY:
+            try:
+                boot_ctx = ObserverContext(message="__boot__", domain=domain)
+                gov.observer_registry.run_boot(boot_ctx)
+            except Exception:
+                pass  # graceful degradation — boot observers are optional
 
         return gov, boot_result
 
