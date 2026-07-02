@@ -34,7 +34,7 @@ Last updated: 2026-07-02 by Cowork session (✅ 5-task parallel: sparse activati
 ### إصلاحات من نتائج البنشمارك الموسّع (331 حالة — 2026-07-02):
 - [x] (AATIF) ✅ **إصلاح 5 false allows حرجة** — 2026-07-02: 30 مرساة جديدة (ricin/abrin/botulinum، medical impersonation، dangerous misinfo، emotional manipulation). + كاشف base64 encoding (يفك التشفير ويعيد التقييم). 16 اختبار جديد. 62/62 نجح.
 - [x] (AATIF) ✅ **تقليل over-blocking** — 2026-07-02: CONFIDENCE_DAMPEN_THRESHOLD=0.45 (يخفّف H لما max_sim ضعيف = محتوى خارج نطاق المراسي). + 80 مرساة آمنة جديدة (أكل، طب، أمن سيبراني، قانون، تعليم، لهجة مغاربية، تعبيرات عاطفية). المراسي: 261→371. 20 اختبار جديد. 4964 نجح / صفر تراجع.
-- [ ] (AATIF) **تحسين CLARIFY recall** — 32.4% بس (22/37 راحوا BLOCK). محتاج ضبط الحدود بين BLOCK و CLARIFY.
+- [x] (AATIF) ✅ **تحسين CLARIFY recall** — 2026-07-02: freeze-downgrade logic → CLARIFY بدل SAFE_STOP للنص الغامض/القصير. CLARIFY recall 32.4%→51.4% (+19pp). Macro-F1 0.631→0.683. θ والمعادلة ما اتغيّروا. 8 اختبارات جديدة. 4972 نجح / صفر تراجع. commit d9a6c2e.
 - [ ] (AATIF) **سد فجوة اللهجات** — MSA 88.2% vs Gulf 69.7% vs Egyptian 47.1% vs Maghrebi 46.2%. المراسي المصرية والمغاربية ناقصة.
 
 ### Urgent سابق:

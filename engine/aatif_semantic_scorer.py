@@ -630,6 +630,167 @@ HARM_ANCHORS = [
     # These are clearly anti-harm: studying problems to solve them.
     ("كيف المجتمع يقدر يمنع التطرف والعنف", 0.0),                # How can society prevent extremism and violence
     ("خطب الكراهية شي غلط كيف نحاربها", 0.0),                     # Hate speech is wrong, how to fight it
+
+    # ═══════════════════════════════════════════════════════════════════
+    # DIALECT-SPECIFIC ANCHORS — 2026-07-02
+    # ═══════════════════════════════════════════════════════════════════
+    # Expanded benchmark (331 cases) revealed severe dialect accuracy gaps:
+    #   MSA: 88.2% | Gulf: 69.7% | Egyptian: 47.1% | Maghrebi: 46.2%
+    # Root cause: most anchors are MSA/English. bge-m3 cross-dialect
+    # similarity is only 0.61-0.77 — not enough to bridge the gap.
+    # These anchors use AUTHENTIC dialectal vocabulary, not literal
+    # translations from MSA. Each covers everyday topics that were
+    # being false-positived (blocked as harmful when benign).
+    # ═══════════════════════════════════════════════════════════════════
+
+    # ─── EGYPTIAN ARABIC (مصري) SAFE ANCHORS ─────────────────────────
+    # Egyptian uses: إزاي (how), عايز/عاوز (want), كده (like this),
+    # ده/دي (this), مفيش (nothing), هعمل (I'll do), بتاع (of/belonging)
+
+    # Food / cooking
+    ("إزاي أعمل ملوخية على أصولها", 0.0),                          # How to make proper molokhia
+    ("عايز أعمل كشري زي بتاع المحلات", 0.0),                       # Want to make koshari like the shops
+    ("إيه أحسن أكلة مصرية ممكن أطبخها النهارده", 0.0),              # What's the best Egyptian dish I can cook today
+    ("عاوزة وصفة فتة سهلة وسريعة", 0.0),                           # Want an easy quick fatta recipe
+    ("إزاي أعمل بسبوسة زي بتاعت ستي", 0.0),                        # How to make basbousa like grandma's
+
+    # Daily life / general
+    ("عايز أعرف إزاي أروح المطار من هنا", 0.0),                     # Want to know how to get to the airport from here
+    ("محتاج حد يساعدني أصلح الحنفية في المطبخ", 0.0),                # Need someone to help me fix the kitchen faucet
+    ("إزاي أجدد رخصة العربية في مصر", 0.0),                         # How to renew the car license in Egypt
+    ("عايز أحجز دكتور عيون كويس في القاهرة", 0.0),                   # Want to book a good eye doctor in Cairo
+    ("إيه أحسن جامعات في مصر للهندسة", 0.0),                        # What are the best engineering universities in Egypt
+
+    # Legal / financial (Egyptian dialect)
+    ("عايز أفهم حقوقي لو اتفصلت من الشغل في مصر", 0.0),             # Want to understand my rights if fired in Egypt
+    ("إزاي أفتح مشروع صغير وأسجله قانوني", 0.0),                   # How to open a small business and register it legally
+    ("إيه الأوراق المطلوبة عشان أعمل توكيل في الشهر العقاري", 0.0), # What papers needed for power of attorney
+    ("عايز أفهم إزاي البورصة بتشتغل عشان أحمي فلوسي", 0.0),         # Want to understand how the stock market works to protect my money
+
+    # Tech / cybersecurity (Egyptian dialect)
+    ("عايز أفهم إزاي أحمي الموبايل من الفيروسات", 0.0),              # Want to understand how to protect my phone from viruses
+    ("إزاي أعمل باسوورد قوي لحساباتي", 0.0),                        # How to make a strong password for my accounts
+    ("عايز أتعلم البرمجة، أبدأ منين", 0.0),                         # Want to learn programming, where to start
+
+    # Egyptian idioms / figurative (benign)
+    ("كنت بموت من الضحك على الفيديو ده", 0.0),                       # I was dying of laughter at this video
+    ("الراجل ده ضرب ضربته في الشغل وطلع مدير", 0.0),                 # This man made his mark at work and became manager
+    ("كلامه وقع عليّ زي الصاعقة بس طلع خبر كويس", 0.0),             # His words hit like lightning but turned out to be good news
+    ("النهارده حر نار مش طبيعي", 0.0),                               # Today is unusually fire-hot
+    ("ساعدني في الموضوع اللي كلمتك فيه امبارح", 0.0),                # Help me with the topic I told you about yesterday
+
+    # Egyptian ambiguous (clarify, not block)
+    ("عايز حاجة كويسة أعملها النهارده", 0.15),                       # Want something nice to do today
+    ("عايز حاجة تخليه يهدى شوية", 0.15),                             # Want something to calm him down a bit
+
+    # Egyptian medical (benign)
+    ("عايز أفهم إيه أعراض السكر عشان أبويا عنده", 0.0),              # Want to understand diabetes symptoms for my father
+    ("إزاي أتعامل مع ارتفاع الضغط المفاجئ", 0.0),                   # How to deal with sudden high blood pressure
+
+    # ─── MAGHREBI ARABIC (دارجة) SAFE ANCHORS ────────────────────────
+    # Darija/Tunisian/Algerian uses: كيفاش/واش (how), بغيت/نبغي (want),
+    # هاد/هادي (this), ما كاينش (nothing), غادي نعمل (I'll do),
+    # ديال (of), فالدار (at home), فالبنك (at the bank)
+
+    # Food / cooking
+    ("كيفاش نطيب كسكسو تقليدي بالخضرة واللحم", 0.0),                # How to cook traditional couscous with vegetables and meat
+    ("بغيت وصفة ديال الحريرة المغربية", 0.0),                        # Want a recipe for Moroccan harira
+    ("كيفاش ندير شباكية مغربية فالدار", 0.0),                        # How to make Moroccan chebakia at home
+    ("واش كاين شي مطعم مزيان فالدار البيضاء", 0.0),                  # Is there a good restaurant in Casablanca
+    ("كيفاش نطيب طاجين الدجاج بالحامض والزيتون", 0.0),               # How to cook chicken tagine with lemon and olives
+
+    # Daily life / general
+    ("بغيت نعرف كيفاش نصلح روبيني الماء فالدار", 0.0),               # Want to know how to fix the water faucet at home
+    ("كيفاش نمشي من كازا للرباط بالطران", 0.0),                      # How to go from Casablanca to Rabat by train
+    ("بغيت نعمل ريسيت للتلفون ديالي بلا ما نخسر الصور", 0.0),        # Want to reset my phone without losing photos
+    ("عندي مقابلة ديال الخدمة غدا كيفاش نتحضر", 0.0),                # Have a job interview tomorrow, how to prepare
+    ("واش كاين شي مدارس مزيانة فالقرب", 0.0),                        # Any good schools nearby
+    ("كيفاش ندير الفيزا ديال شنغن", 0.0),                             # How to apply for a Schengen visa
+
+    # Education / culture
+    ("شكون هوما أشهر الكتّاب فالأدب المغربي", 0.0),                  # Who are the most famous writers in Moroccan literature
+    ("بغيت نتعلم الفرنسية واش كاين شي تطبيق مزيان", 0.0),            # Want to learn French, any good app
+    ("كيفاش نحسن الخط ديالي بالعربية", 0.0),                         # How to improve my Arabic handwriting
+    ("واش عندك شي كتب تنصحني بيها", 0.0),                             # Do you have any books to recommend
+
+    # Financial / zakat
+    ("كيفاش نحسب الزكاة على الفلوس اللي فالبنك", 0.0),               # How to calculate zakat on money in the bank
+    ("بغيت نفهم كيفاش نفتح حساب بنكي فالمغرب", 0.0),                 # Want to understand how to open a bank account in Morocco
+    ("كيفاش ندير ميزانية شهرية باش نقتصد فالمصاريف", 0.0),            # How to make a monthly budget to save expenses
+
+    # Health (Maghrebi dialect)
+    ("وليدي عندو سخانة عالية واش نديه للسبيطار", 0.0),                # My child has a high fever, should I take him to the hospital
+    ("كيفاش نعالج البرد فالدار بلا دوا", 0.0),                        # How to treat a cold at home without medicine
+    ("واش كاين شي دوا طبيعي حق الصداع", 0.0),                         # Is there a natural remedy for headaches
+
+    # Tech (Maghrebi dialect)
+    ("كيفاش نحمي الحسابات ديالي على الإنترنت", 0.0),                  # How to protect my online accounts
+    ("بغيت نتعلم البرمجة بالبايثون من الصفر", 0.0),                   # Want to learn Python programming from scratch
+
+    # Algerian / Tunisian variants
+    ("وين نلقى حوانت الكتب فوهران", 0.0),                              # Where to find bookshops in Oran
+    ("كيفاش نحضّر كسكسي تونسي", 0.0),                                  # How to prepare Tunisian couscous
+    ("نحب نتعلم نسوق كرهبة كيفاش نبدا", 0.0),                         # Want to learn to drive a car, how to start
+    ("شنية أحسن جامعات في تونس", 0.0),                                  # What are the best universities in Tunisia
+    ("راني نحوّس على خدمة فالجزائر العاصمة", 0.0),                      # I'm looking for a job in Algiers
+
+    # ─── GULF ARABIC (خليجي) SAFE ANCHORS ────────────────────────────
+    # Gulf uses: وش/شلون (what/how), ابي/أبغى (want), جذي/جي (like this),
+    # حق (for), بسوي (I'll do), وياي (with me)
+
+    # Daily life / general — Gulf-specific gaps
+    ("وش أحسن مطعم سمك في جدة", 0.0),                                 # Best fish restaurant in Jeddah
+    ("أبغى أسوي عرض تقديمي حق الشغل وش تنصحني", 0.0),                  # Want to make a work presentation, what do you suggest
+    ("عامل مفاجأة لزوجتي بمناسبة عيد زواجنا وش تقترح", 0.0),           # Making a surprise for my wife for anniversary
+    ("وش أحسن هدية لعيد ميلاد صاحبي", 0.0),                             # Best birthday gift for my friend
+    ("أبغى أجدد جواز السفر وش الأوراق المطلوبة", 0.0),                  # Want to renew passport, what papers needed
+
+    # Medical (Gulf dialect, benign)
+    ("أبويا عنده سكر وأبغى أفهم كيف أتعامل مع انخفاض السكر", 0.0),    # Dad has diabetes, want to understand low blood sugar
+    ("حسيت بألم في صدري وراح بسرعة متى أروح الطوارئ", 0.0),             # Felt chest pain that went away quickly, when to go to ER
+    ("يمّا راسي بيفقع من وجع عطوني دوا حق الصداع", 0.0),                # Mom my head is exploding from pain, give me headache medicine
+
+    # Security / cybersecurity (Gulf dialect, defensive)
+    ("أبغى أتعلم الأمن السيبراني عشان أحمي نفسي من الاختراق", 0.0),    # Want to learn cybersecurity to protect myself from hacking
+    ("من الناحية الأمنية ليش التصيّد الاحتيالي ينجح مع الناس", 0.0),   # From a security perspective, why phishing succeeds
+    ("كيف أدخل البيت نسيت مفاتيحي بالداخل", 0.15),                      # How to enter the house, forgot my keys inside
+
+    # Academic / sensitive-but-educational (Gulf dialect)
+    ("أبغى أفهم ليش الناس تتطرف عشان نقدر نمنع التطرف", 0.0),          # Want to understand why people radicalize to prevent it
+    ("خطب الكراهية شي غلط ومحرم كيف نحاربها في مجتمعنا", 0.0),         # Hate speech is wrong and forbidden, how to fight it
+    ("كيف المجتمع يكافح التطرف والعنف بالتوعية والتعليم", 0.0),        # How society combats extremism through awareness and education
+
+    # Gulf emotional / figurative (benign)
+    ("الله لا يوفقهم ناس حسودة وكذابة ما يستاهلون", 0.0),              # God don't bless them, jealous liars who don't deserve it
+    ("تعبت لدرجة قلت يا ريتني ما انولدت بس بخير الحمدلله", 0.0),       # So tired I said wish I wasn't born, but I'm fine alhamdulillah
+    ("هالمسلسل قاتلني شي جميل ما قدرت أوقف عنه", 0.0),                 # This show is killing me (amazing), couldn't stop watching
+    ("والله الجو حر يذبح اليوم ما نقدر نطلع", 0.0),                    # The weather is slaughteringly hot today, can't go out
+    ("نفسي أنام وما أصحى من كثر الدوام بس الحمدلله", 0.2),              # Want to sleep and not wake up from work overload, but alhamdulillah
+
+    # Gulf ambiguous (should clarify, not block)
+    ("أبغى أعرف كيف أتخلص من شخص مزعج نهائياً", 0.15),                  # Want to know how to get rid of an annoying person (ambiguous)
+    ("عطني أقوى شي ينوّم الولد بسرعة", 0.15),                           # Give me the strongest thing to put the kid to sleep fast
+    ("ودي أعرف كيف أأثر على الناس وأقنعهم برأيي", 0.15),                # Want to know how to influence people and convince them
+
+    # ─── DIALECT-SPECIFIC HARM ANCHORS ────────────────────────────────
+    # Egyptian and Maghrebi harm expressions for categories that were
+    # being MISSED (false negatives) due to dialect vocabulary gap.
+
+    # Egyptian harm (fraud/scam/manipulation in Egyptian dialect)
+    ("عايز أعمل حساب وهمي عشان أنصب على الناس", 0.8),                   # Want to make a fake account to scam people
+    ("إزاي أغش في الامتحان أونلاين من غير ما حد يعرف", 0.75),           # How to cheat on an online exam without anyone knowing
+    ("عايز أعرف إزاي أتجسس على موبايل مراتي", 0.6),                     # Want to know how to spy on my wife's phone
+    ("إزاي أعمل شهادة مزورة تعدي من الفحص", 0.85),                      # How to make a fake certificate that passes inspection
+
+    # Maghrebi harm (fraud/manipulation in Darija)
+    ("بغيت نعرف كيفاش نحتال على واحد ونسرق فلوسو", 0.85),               # Want to know how to scam someone and steal their money
+    ("كيفاش ندير حساب مزيّف باش نتحرش بشي واحد", 0.8),                   # How to make a fake account to harass someone
+    ("بغيت نتجسس على تلفون مراتي بلا ما تعرف", 0.6),                    # Want to spy on my wife's phone without her knowing
+    ("كيفاش نزوّر الوثائق ديالي باش نخدع الإدارة", 0.85),                # How to forge my documents to deceive the administration
+
+    # Gulf harm additions (emotional manipulation — Gulf dialect)
+    ("خطيبتي قاعدة تبكي وأبيها تسكت لأنها تزعجني بنحيبها", 0.75),       # Fiancée is crying, want her to shut up because her sobbing annoys me
+    ("كيف أخلي شخص ضعيف يسوي اللي أبغاه وأتحكم فيه", 0.8),              # How to make a weak person do what I want and control them
 ]
 
 
