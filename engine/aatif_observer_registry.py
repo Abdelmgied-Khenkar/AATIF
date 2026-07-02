@@ -239,6 +239,9 @@ class ObserverRegistry:
             _make_sdm_observer,
             _make_mrs_observer,
             _make_maqam_observer,
+            _make_drp_observer,
+            _make_eqc_observer,
+            _make_cultural_opacity_observer,
         ]
 
         for factory in adapter_factories:
@@ -978,6 +981,118 @@ def _make_twin_observer() -> Optional[Observer]:
             return self._detector
 
     return TwinObserver()
+
+
+# ───────────────────────────────────────────────────
+#  14. FN#007 DRP (Destruction & Rebirth Protocol)
+# ───────────────────────────────────────────────────
+
+def _make_drp_observer() -> Optional[Observer]:
+    from aatif_drp import DestructionRebirthObserver  # noqa: F811
+
+    # DRP already implements Observer directly — just instantiate.
+    return DestructionRebirthObserver()
+
+
+# ───────────────────────────────────────────────────
+#  15. FN#062 EQC (Ethical Question Compiler)
+# ───────────────────────────────────────────────────
+
+def _make_eqc_observer() -> Optional[Observer]:
+    from aatif_eqc import EthicalQuestionCompiler  # noqa: F811
+
+    class EQCObserver(Observer):
+        name = "ethical_question_compiler"
+        phase = ObserverPhase.POST_S
+        CAN_BLOCK_RUNTIME = False
+
+        def __init__(self):
+            self._compiler = EthicalQuestionCompiler()
+
+        def observe(self, ctx: ObserverContext) -> ObserverResult:
+            if not ctx.message:
+                return ObserverResult(
+                    module_name=self.name, phase=self.phase,
+                )
+            reading = self._compiler.analyze(
+                ctx.message,
+                domain=ctx.domain,
+            )
+            flags = []
+            enrichment = ""
+            if reading.activated:
+                for flag in reading.flags:
+                    flags.append(f"EQC_{flag.upper()}")
+                if reading.rejected_layer:
+                    flags.append(
+                        f"EQC_REJECTED_AT={reading.rejected_layer}"
+                    )
+                flags.append(
+                    f"EQC_CONCERN={reading.concern_level}"
+                )
+                enrichment = (
+                    f"EQC (FN#062): concern_level={reading.concern_level}, "
+                    f"layers={reading.layers_passed}/{reading.layers_checked}. "
+                )
+                if reading.enrichment_note:
+                    enrichment += reading.enrichment_note
+            return ObserverResult(
+                module_name=self.name,
+                phase=self.phase,
+                reading=reading,
+                activated=reading.activated,
+                flags=flags,
+                prompt_enrichment=enrichment,
+            )
+
+    return EQCObserver()
+
+
+# ───────────────────────────────────────────────────
+#  16. FN#074 Cultural Semantic Opacity
+# ───────────────────────────────────────────────────
+
+def _make_cultural_opacity_observer() -> Optional[Observer]:
+    from aatif_cultural_opacity import CulturalOpacityDetector  # noqa: F811
+
+    class CulturalOpacityObserver(Observer):
+        name = "cultural_opacity"
+        phase = ObserverPhase.POST_S
+        CAN_BLOCK_RUNTIME = False
+
+        def __init__(self):
+            self._detector = CulturalOpacityDetector()
+
+        def observe(self, ctx: ObserverContext) -> ObserverResult:
+            if not ctx.message:
+                return ObserverResult(
+                    module_name=self.name, phase=self.phase,
+                )
+            reading = self._detector.analyze(ctx.message)
+            flags = []
+            enrichment = ""
+            if reading.activated:
+                flags.append(
+                    f"CULTURAL_OPACITY={reading.opacity_level.value}: "
+                    f"delta={reading.cultural_weight_delta:.2f}"
+                )
+                for ev in reading.evidence[:3]:
+                    flags.append(f"CULTURAL_EVIDENCE: {ev}")
+                enrichment = (
+                    f"Cultural Opacity (FN#074): {reading.explanation} "
+                    f"Advisory weight delta: "
+                    f"{reading.cultural_weight_delta:.2f}."
+                )
+            return ObserverResult(
+                module_name=self.name,
+                phase=self.phase,
+                reading=reading,
+                activated=reading.activated,
+                flags=flags,
+                prompt_enrichment=enrichment,
+            )
+
+    return CulturalOpacityObserver()
 
 
 # ═══════════════════════════════════════════════════════════

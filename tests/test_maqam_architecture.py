@@ -50,6 +50,7 @@ from engine.aatif_maqam_architecture import (
     AqdReading,
     NisbaReading,
     MaqamReading,
+    StructuralResonance,
     # Marker sets
     WARMTH_MARKERS_EN,
     WARMTH_MARKERS_AR,
@@ -75,8 +76,11 @@ from engine.aatif_maqam_architecture import (
     _detect_dialect,
     _is_negated,
     _compute_cadence,
+    _compute_structural_resonance,
     _get_confidence_band,
     _non_activated_reading,
+    # FN#066 forbidden labels
+    _FORBIDDEN_PSYCH_LABELS,
 )
 
 
@@ -890,3 +894,298 @@ class TestP0ShortTextAqdDampener:
             "Nothing works anymore! I can't believe this! Why?!"
         )
         assert short.aqd.rhythm_score <= long_text.aqd.rhythm_score
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  §28  FN#066 Structural Resonance
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+class TestStructuralResonanceFragmented:
+    """FN#066 Test 1: Short fragmented text → low density, low continuity."""
+
+    def test_fragmented_text_low_density(self):
+        text = "No. Stop. Why. Go. Now."
+        sr = _compute_structural_resonance(text)
+        assert sr.density <= 0.3, f"Expected low density, got {sr.density}"
+
+    def test_fragmented_text_low_continuity(self):
+        text = "No. Stop. Why. Go. Now."
+        sr = _compute_structural_resonance(text)
+        assert sr.continuity <= 0.2, f"Expected low continuity, got {sr.continuity}"
+
+    def test_fragmented_text_high_fragment_count(self):
+        text = "No. Stop. Why. Go. Now."
+        sr = _compute_structural_resonance(text)
+        assert sr.fragment_count >= 4, f"Expected 4+ fragments, got {sr.fragment_count}"
+
+    def test_arabic_fragmented(self):
+        text = "لا. توقف. ليش. روح."
+        sr = _compute_structural_resonance(text)
+        assert sr.density <= 0.3
+        assert sr.continuity <= 0.2
+
+
+class TestStructuralResonanceFlowing:
+    """FN#066 Test 2: Long flowing text → high density, high continuity."""
+
+    def test_flowing_text_high_density(self):
+        text = (
+            "The comprehensive analysis of the structural patterns "
+            "within Arabic text reveals fascinating correlations between "
+            "sentence construction and emotional expression modalities. "
+            "Furthermore the investigation demonstrates that density "
+            "measurements can reliably indicate communication structure."
+        )
+        sr = _compute_structural_resonance(text)
+        assert sr.density >= 0.5, f"Expected high density, got {sr.density}"
+
+    def test_flowing_text_high_continuity(self):
+        text = (
+            "The comprehensive analysis of the structural patterns "
+            "within Arabic text reveals fascinating correlations between "
+            "sentence construction and emotional expression modalities. "
+            "Furthermore the investigation demonstrates that density "
+            "measurements can reliably indicate communication structure."
+        )
+        sr = _compute_structural_resonance(text)
+        assert sr.continuity >= 0.8, f"Expected high continuity, got {sr.continuity}"
+
+    def test_flowing_text_low_fragment_count(self):
+        text = (
+            "The comprehensive analysis of the structural patterns "
+            "within Arabic text reveals fascinating correlations. "
+            "Furthermore the investigation demonstrates that density "
+            "measurements can reliably indicate communication structure."
+        )
+        sr = _compute_structural_resonance(text)
+        assert sr.fragment_count == 0
+
+
+class TestStructuralResonanceEffortHigh:
+    """FN#066 Test 3: Effort index high for text with !!! and repeated characters."""
+
+    def test_effort_high_exclamations(self):
+        text = "THIS IS UNACCEPTABLE!!! I CANNOT BELIEVE THIS!!! WHY WHY WHY???"
+        sr = _compute_structural_resonance(text)
+        assert sr.effort_index >= 0.4, f"Expected high effort, got {sr.effort_index}"
+
+    def test_effort_high_repeated_chars(self):
+        text = "Nooooo!!! This is sooo bad!!! Pleeeease help!!!"
+        sr = _compute_structural_resonance(text)
+        assert sr.effort_index >= 0.3, f"Expected elevated effort, got {sr.effort_index}"
+
+    def test_effort_high_caps(self):
+        text = "STOP IT NOW. THIS IS WRONG. DO SOMETHING ABOUT IT."
+        sr = _compute_structural_resonance(text)
+        assert sr.effort_index > 0.0, f"Expected non-zero effort, got {sr.effort_index}"
+
+
+class TestStructuralResonanceEffortLow:
+    """FN#066 Test 4: Effort index low for calm text."""
+
+    def test_effort_low_calm_text(self):
+        text = (
+            "The meeting is scheduled for tomorrow afternoon. "
+            "We will discuss the quarterly results. "
+            "Please bring your reports."
+        )
+        sr = _compute_structural_resonance(text)
+        assert sr.effort_index <= 0.15, f"Expected low effort, got {sr.effort_index}"
+
+    def test_effort_low_simple_arabic(self):
+        text = "الاجتماع غدا بعد الظهر. سنناقش النتائج الربعية. يرجى إحضار التقارير."
+        sr = _compute_structural_resonance(text)
+        assert sr.effort_index <= 0.15, f"Expected low effort, got {sr.effort_index}"
+
+
+class TestStructuralResonanceRhythmHigh:
+    """FN#066 Test 5: Rhythm regularity high for uniform sentence lengths."""
+
+    def test_rhythm_regular_uniform(self):
+        text = (
+            "The cat sat on the mat. "
+            "The dog ran in the park. "
+            "The bird flew over the tree. "
+            "The fish swam in the lake."
+        )
+        sr = _compute_structural_resonance(text)
+        assert sr.rhythm_regularity >= 0.7, f"Expected high rhythm regularity, got {sr.rhythm_regularity}"
+
+
+class TestStructuralResonanceRhythmLow:
+    """FN#066 Test 6: Rhythm regularity low for mixed short/long sentences."""
+
+    def test_rhythm_irregular_mixed(self):
+        text = (
+            "No. "
+            "The comprehensive investigation into the structural patterns of "
+            "Arabic textual expression reveals deeply fascinating correlations "
+            "between sentence construction methodologies and emotional modalities. "
+            "Why. "
+            "Furthermore the extended analysis demonstrates conclusively that "
+            "density measurements across varied linguistic contexts can serve "
+            "as reliable indicators of underlying communication structure. "
+            "Stop."
+        )
+        sr = _compute_structural_resonance(text)
+        assert sr.rhythm_regularity <= 0.4, f"Expected low rhythm regularity, got {sr.rhythm_regularity}"
+
+
+class TestStructuralResonanceNoPsychLabels:
+    """FN#066 Test 7+8: Description NEVER contains psychological labels.
+    Description uses structural language only."""
+
+    def test_no_psych_labels_english(self):
+        """No forbidden psychological labels in any description."""
+        texts = [
+            "THIS IS TERRIBLE!!! WHY WHY WHY???",
+            "No. Stop. Why. Go.",
+            "I feel so alone and everything hurts and nothing matters anymore.",
+            "HELP ME PLEASE!!! SOMEONE!!! ANYONE!!!",
+        ]
+        for text in texts:
+            sr = _compute_structural_resonance(text)
+            desc_lower = sr.description.lower()
+            for label in _FORBIDDEN_PSYCH_LABELS:
+                assert label.lower() not in desc_lower, (
+                    f"Forbidden psychological label '{label}' found in description: '{sr.description}'"
+                )
+
+    def test_no_psych_labels_arabic(self):
+        """Arabic descriptions must not contain forbidden labels."""
+        texts = [
+            "لا. توقف. ليش. روح.",
+            "ساعدني!!! أرجوك!!! ما أقدر!!!",
+        ]
+        for text in texts:
+            sr = _compute_structural_resonance(text)
+            for label in _FORBIDDEN_PSYCH_LABELS:
+                assert label not in sr.description, (
+                    f"Forbidden label '{label}' found in description: '{sr.description}'"
+                )
+
+    def test_description_uses_structural_language(self):
+        """Description must use structural terms like ضغط, كثافة, إيقاع, etc."""
+        structural_terms = {
+            "كثافة", "إيقاع", "تعبير", "ضغط", "توزيع",
+            "متقطع", "متصل", "منتظم", "هادئ", "توقفات", "بنية",
+        }
+        # Fragmented text
+        sr = _compute_structural_resonance("لا. توقف. ليش. روح. خلاص.")
+        found = any(term in sr.description for term in structural_terms)
+        assert found, f"Description '{sr.description}' lacks structural terms"
+
+        # High-effort text
+        sr2 = _compute_structural_resonance("لا!!! ليش!!! توقف!!! ما أقدر!!!")
+        found2 = any(term in sr2.description for term in structural_terms)
+        assert found2, f"Description '{sr2.description}' lacks structural terms"
+
+
+class TestStructuralResonanceInMaqamReading:
+    """FN#066 Test 9: structural_resonance field present in MaqamReading."""
+
+    def test_field_present_activated(self):
+        text = "Thank you so much, I appreciate everything. You're so kind. Means a lot."
+        reading = detect_maqam(text)
+        assert hasattr(reading, 'structural_resonance')
+        assert reading.structural_resonance is not None
+        assert isinstance(reading.structural_resonance, StructuralResonance)
+
+    def test_field_present_non_activated(self):
+        text = "The meeting is at 3pm tomorrow."
+        reading = detect_maqam(text)
+        assert hasattr(reading, 'structural_resonance')
+        # Non-activated readings with text still get structural resonance
+        # (only _non_activated_reading() for empty/None text returns None)
+
+    def test_field_none_for_empty(self):
+        reading = detect_maqam("")
+        assert reading.structural_resonance is None
+
+    def test_field_none_for_none(self):
+        reading = detect_maqam(None)
+        assert reading.structural_resonance is None
+
+    def test_structural_resonance_immutable(self):
+        sr = StructuralResonance(
+            density=0.5,
+            continuity=0.5,
+            effort_index=0.3,
+            rhythm_regularity=0.7,
+            fragment_count=2,
+            description="بنية تعبيرية متوسطة",
+        )
+        with pytest.raises(AttributeError):
+            sr.density = 0.9
+
+    def test_all_fields_in_range(self):
+        """All numeric fields must be 0-1 (except fragment_count)."""
+        texts = [
+            "No. Stop. Why.",
+            "Thank you so much, I appreciate everything you have done for me.",
+            "THIS IS TERRIBLE!!! WHY!!! NO!!!",
+            "الاجتماع غدا. سنناقش النتائج. يرجى الحضور.",
+        ]
+        for text in texts:
+            sr = _compute_structural_resonance(text)
+            assert 0.0 <= sr.density <= 1.0, f"density {sr.density} out of range"
+            assert 0.0 <= sr.continuity <= 1.0, f"continuity {sr.continuity} out of range"
+            assert 0.0 <= sr.effort_index <= 1.0, f"effort_index {sr.effort_index} out of range"
+            assert 0.0 <= sr.rhythm_regularity <= 1.0, f"rhythm_regularity {sr.rhythm_regularity} out of range"
+            assert sr.fragment_count >= 0, f"fragment_count {sr.fragment_count} negative"
+
+
+class TestStructuralResonanceExistingTestsStillPass:
+    """FN#066 Test 10: Existing tests still pass after changes.
+
+    This class verifies that adding structural_resonance does NOT
+    break any existing MaqamReading construction or detection.
+    """
+
+    def test_existing_warmth_still_works(self):
+        text = "Thank you so much, I appreciate everything you've done. Means a lot to me."
+        reading = detect_maqam(text)
+        assert reading.detected_maqam == MaqamType.WARMTH
+        assert reading.activated is True
+
+    def test_existing_neutral_still_works(self):
+        text = "Please schedule the meeting for 2pm."
+        reading = detect_maqam(text)
+        assert reading.detected_maqam == MaqamType.NEUTRAL
+        assert reading.activated is False
+
+    def test_existing_frustration_arabic_still_works(self):
+        text = "طفشت مليت ما ينفع كل شي يخرب ما يزبط"
+        reading = detect_maqam(text)
+        assert reading.detected_maqam == MaqamType.FRUSTRATION
+        assert reading.activated is True
+
+    def test_non_activated_helper_still_works(self):
+        reading = _non_activated_reading()
+        assert reading.detected_maqam == MaqamType.NEUTRAL
+        assert reading.activated is False
+        assert reading.structural_resonance is None
+
+    def test_reading_still_has_all_original_fields(self):
+        text = "I'm scared and I don't know what to do. I feel lost. Please help."
+        reading = detect_maqam(text)
+        # All original fields must still exist
+        assert hasattr(reading, 'detected_maqam')
+        assert hasattr(reading, 'confidence')
+        assert hasattr(reading, 'confidence_band')
+        assert hasattr(reading, 'jins')
+        assert hasattr(reading, 'aqd')
+        assert hasattr(reading, 'nisba')
+        assert hasattr(reading, 'secondary_maqam')
+        assert hasattr(reading, 'secondary_confidence')
+        assert hasattr(reading, 'markers_found')
+        assert hasattr(reading, 'evidence_count')
+        assert hasattr(reading, 'language_detected')
+        assert hasattr(reading, 'dialect_hint')
+        assert hasattr(reading, 'scores_by_maqam')
+        assert hasattr(reading, 'b5_style_hints')
+        assert hasattr(reading, 'activated')
+        assert hasattr(reading, 'structural_resonance')
+        assert hasattr(reading, 'safety_decision_authority')
+        assert hasattr(reading, '_isolation_marker')

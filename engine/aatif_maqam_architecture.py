@@ -1,6 +1,7 @@
 """
 aatif_maqam_architecture.py — Maqam Architecture Law Detector (LAW BEH-01)
 Field Note #065: The Maqam Architecture Law
+Field Note #066: Structural Resonance (merged into Maqam)
 
 Slogan: "Scale = Physical pitch set. Maqam = Living temporal–emotional architecture."
         السلّم = مجموعة أصوات فيزيائية. المقام = بنية زمنية-عاطفية حية.
@@ -21,6 +22,12 @@ Core concept:
     observed that emotional text has "modes" analogous to musical maqams.
     This module operationalises that observation computationally.
 
+    FN#066 — Structural Resonance (merged 2026-07-02):
+    Reads expression STRUCTURE (density, continuity, effort, rhythm)
+    WITHOUT psychological diagnosis.  Uses only measurable structural
+    indicators.  NEVER outputs labels like "stressed" or "sad" — only
+    structural descriptions like "ضغط في الإيقاع مُلاحَظ".
+
 This module is B-prime **observational**: it DETECTS the emotional
 architecture of user text.  It does NOT decide response tone — it provides
 maqam readings so the R equation can adapt style.
@@ -30,12 +37,17 @@ jurisdiction.  It does NOT decide whether a request is allowed.
 
 Pipeline position:  after S(d), before prompt composition.
 Reads:   user message.
-Produces: MaqamReading with triad analysis + B5 style hints.
+Produces: MaqamReading with triad analysis + structural resonance + B5 style hints.
 
 Novel contribution (FN#065):
     First B-prime module that detects emotional mode architecture using
     a triad model (jins/aqd/nisba), enabling the R equation to adapt
     response style based on the user's emotional modality.
+
+Novel contribution (FN#066):
+    Structural Resonance — reads expression STRUCTURE without psychology.
+    Measurable indicators: density, continuity, effort index, rhythm.
+    Forbidden: psychological labels.  Allowed: structural descriptions.
 
 Scientific support:
     - Touma 1971: Maqam as temporal-spatial free structure
@@ -51,6 +63,7 @@ Invariant 3: Emotional mode detection is ADVISORY — safety handled by S equati
 Invariant 4: DEFIANCE markers are non-judicial and context-sensitive.
 Invariant 5: Gulf Arabic idioms must not be over-escalated.
 Invariant 6: The GovernanceEquation remains the only judicial authority.
+Invariant 7: Structural Resonance NEVER uses psychological labels.
 
 Authority Contract
 ------------------
@@ -212,6 +225,30 @@ class NisbaReading:
 
 
 @dataclass(frozen=True)
+class StructuralResonance:
+    """Structural expression reading — NOT psychology (FN#066).
+
+    Reads expression STRUCTURE only.  NEVER outputs psychological labels
+    like "stressed", "sad", "anxious".  Only structural descriptions like
+    "ضغط في الإيقاع مُلاحَظ" or "كثافة تعبيرية منخفضة".
+
+    Indicators:
+        density          — words per sentence average, normalised 0-1
+        continuity       — ratio of connected (non-fragment) sentences, 0-1
+        effort_index     — structural pressure signals, 0-1
+        rhythm_regularity — regularity of sentence lengths, 0-1
+        fragment_count   — number of short (< 3 words) sentences
+        description      — structural description in Arabic (NEVER psychological)
+    """
+    density: float              # words per sentence average (higher = denser)
+    continuity: float           # 0-1, how connected the expression is
+    effort_index: float         # 0-1, structural pressure level
+    rhythm_regularity: float    # 0-1, how regular the rhythm is
+    fragment_count: int         # number of fragments/short sentences
+    description: str            # e.g. "ضغط في الإيقاع الكتابي"
+
+
+@dataclass(frozen=True)
 class MaqamReading:
     """Complete Maqam Architecture reading.
 
@@ -243,6 +280,9 @@ class MaqamReading:
     # ── B5 advisory ──
     b5_style_hints: Tuple[str, ...]      # advisory hints for R equation
     activated: bool                      # False ⇒ fast-path skip
+
+    # ── FN#066 Structural Resonance ──
+    structural_resonance: Optional[StructuralResonance] = None
 
     # ── B-prime contract ──
     safety_decision_authority: str = SAFETY_DECISION_AUTHORITY
@@ -634,6 +674,161 @@ def _get_confidence_band(confidence: float) -> ConfidenceBand:
         return ConfidenceBand.STRONG
 
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  FN#066 — Structural Resonance (forbidden: psychological labels)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Psychological labels that MUST NEVER appear in descriptions
+_FORBIDDEN_PSYCH_LABELS = frozenset({
+    "stressed", "sad", "anxious", "depressed", "angry", "happy",
+    "scared", "afraid", "nervous", "upset", "worried", "panicked",
+    "traumatized", "manic", "bipolar", "psychotic",
+    "متوتر", "حزين", "قلق", "مكتئب", "غاضب", "سعيد",
+    "خائف", "عصبي", "مضطرب", "قلقان",
+})
+
+
+def _compute_structural_resonance(text: str) -> StructuralResonance:
+    """Compute structural resonance indicators from text (FN#066).
+
+    Reads expression STRUCTURE only — density, continuity, effort, rhythm.
+    NEVER produces psychological labels.  Deterministic, no LLM, no embeddings.
+    """
+    if not text or not text.strip():
+        return StructuralResonance(
+            density=0.0,
+            continuity=0.0,
+            effort_index=0.0,
+            rhythm_regularity=0.0,
+            fragment_count=0,
+            description="لا يوجد نص للتحليل",
+        )
+
+    # ── Split into sentences ──────────────────────────────────
+    # Use broad sentence terminators including Arabic comma
+    sentences = re.split(r'[.!?؟\n،]+', text)
+    sentences = [s.strip() for s in sentences if s.strip()]
+
+    if not sentences:
+        return StructuralResonance(
+            density=0.0,
+            continuity=0.0,
+            effort_index=0.0,
+            rhythm_regularity=0.0,
+            fragment_count=0,
+            description="لا يوجد نص للتحليل",
+        )
+
+    # ── 1. Density ────────────────────────────────────────────
+    # Words per sentence, normalised to 0-1
+    lengths = [len(s.split()) for s in sentences]
+    mean_wps = sum(lengths) / len(lengths) if lengths else 0
+
+    # Normalise: 1-3 words = ~0.2, 4-8 = ~0.5, 9+ = ~0.8+
+    if mean_wps <= 1:
+        density = 0.1
+    elif mean_wps <= 3:
+        density = 0.1 + (mean_wps - 1) * 0.05  # 0.1 – 0.2
+    elif mean_wps <= 8:
+        density = 0.2 + (mean_wps - 3) * 0.06  # 0.2 – 0.5
+    else:
+        density = min(0.5 + (mean_wps - 8) * 0.05, 1.0)  # 0.5 – 1.0
+    density = round(min(max(density, 0.0), 1.0), 3)
+
+    # ── 2. Continuity ─────────────────────────────────────────
+    # Fragment = sentence with < 3 words
+    fragment_threshold = 3
+    fragment_count = sum(1 for l in lengths if l < fragment_threshold)
+    total_sentences = len(sentences)
+    continuity = round(1.0 - (fragment_count / total_sentences) if total_sentences > 0 else 0.0, 3)
+    continuity = min(max(continuity, 0.0), 1.0)
+
+    # ── 3. Effort Index ───────────────────────────────────────
+    # Combine structural pressure signals
+    effort_signals = 0.0
+    max_effort_signals = 5.0  # normaliser
+
+    # Exclamation marks
+    excl_count = text.count('!')
+    effort_signals += min(excl_count / 3.0, 1.0)
+
+    # Question marks
+    q_count = text.count('?') + text.count('؟')
+    effort_signals += min(q_count / 3.0, 1.0)
+
+    # Repeated characters (e.g., "!!!", "???", "aaa")
+    repeated_chars = len(re.findall(r'(.)\1{2,}', text))
+    effort_signals += min(repeated_chars / 2.0, 1.0)
+
+    # ALL CAPS words (English only, 2+ chars)
+    caps_words = len(re.findall(r'\b[A-Z]{2,}\b', text))
+    effort_signals += min(caps_words / 3.0, 1.0)
+
+    # Repeated words (any word appearing 3+ times)
+    words = text.lower().split()
+    word_counts: Dict[str, int] = {}
+    for w in words:
+        w_clean = re.sub(r'[^\w]', '', w)
+        if w_clean and len(w_clean) > 1:
+            word_counts[w_clean] = word_counts.get(w_clean, 0) + 1
+    repeated_words = sum(1 for c in word_counts.values() if c >= 3)
+    effort_signals += min(repeated_words / 2.0, 1.0)
+
+    effort_index = round(min(effort_signals / max_effort_signals, 1.0), 3)
+
+    # ── 4. Rhythm Regularity ──────────────────────────────────
+    # Low stddev of sentence lengths = regular rhythm (~1.0)
+    # High stddev = irregular (~0.0)
+    if len(lengths) <= 1:
+        rhythm_regularity = 1.0  # single sentence = trivially regular
+    else:
+        mean_len = sum(lengths) / len(lengths)
+        variance = sum((l - mean_len) ** 2 for l in lengths) / len(lengths)
+        stddev = variance ** 0.5
+        # Normalise: stddev 0 → 1.0, stddev 10+ → 0.0
+        rhythm_regularity = max(1.0 - (stddev / 10.0), 0.0)
+    rhythm_regularity = round(min(max(rhythm_regularity, 0.0), 1.0), 3)
+
+    # ── 5. Description (structural, NEVER psychological) ──────
+    desc_parts = []
+
+    if density <= 0.3:
+        desc_parts.append("كثافة تعبيرية منخفضة")
+    elif density >= 0.7:
+        desc_parts.append("كثافة تعبيرية عالية")
+
+    if continuity <= 0.4:
+        desc_parts.append("تعبير متقطع")
+    elif continuity >= 0.8:
+        desc_parts.append("تعبير متصل")
+
+    if effort_index >= 0.5:
+        desc_parts.append("ضغط في الإيقاع الكتابي")
+    elif effort_index <= 0.1:
+        desc_parts.append("إيقاع كتابي هادئ")
+
+    if rhythm_regularity <= 0.3:
+        desc_parts.append("توزيع غير منتظم")
+    elif rhythm_regularity >= 0.8:
+        desc_parts.append("توزيع منتظم")
+
+    if fragment_count > 0 and total_sentences > 1:
+        ratio = fragment_count / total_sentences
+        if ratio >= 0.5:
+            desc_parts.append("توقفات قصيرة متكررة")
+
+    description = " + ".join(desc_parts) if desc_parts else "بنية تعبيرية متوسطة"
+
+    return StructuralResonance(
+        density=density,
+        continuity=continuity,
+        effort_index=effort_index,
+        rhythm_regularity=rhythm_regularity,
+        fragment_count=fragment_count,
+        description=description,
+    )
+
+
 def _non_activated_reading() -> MaqamReading:
     """Return a cheap non-activated reading (fast-path skip)."""
     empty_jins = JinsReading(dominant_pattern="none", strength=0.0, markers_found=())
@@ -676,6 +871,9 @@ def detect_maqam(text: str) -> MaqamReading:
     """
     if not text or not text.strip():
         return _non_activated_reading()
+
+    # ── FN#066: Compute structural resonance ─────────────────
+    structural_resonance = _compute_structural_resonance(text)
 
     # Normalise for matching
     text_norm_en = text.lower()
@@ -732,6 +930,7 @@ def detect_maqam(text: str) -> MaqamReading:
             scores_by_maqam={m.value: round(s, 3) for m, s in scores.items()},
             b5_style_hints=("maintain_neutral_tone",),
             activated=False,
+            structural_resonance=structural_resonance,
         )
 
     # ── Phase 3: Compute nisba ratios ─────────────────────────
@@ -779,6 +978,7 @@ def detect_maqam(text: str) -> MaqamReading:
             scores_by_maqam={m.value: round(s, 3) for m, s in scores.items()},
             b5_style_hints=("maintain_neutral_tone",),
             activated=False,
+            structural_resonance=structural_resonance,
         )
 
     # ── Phase 5: Secondary maqam ──────────────────────────────
@@ -844,4 +1044,5 @@ def detect_maqam(text: str) -> MaqamReading:
         scores_by_maqam={m.value: round(s, 3) for m, s in scores.items()},
         b5_style_hints=tuple(hints),
         activated=True,
+        structural_resonance=structural_resonance,
     )
