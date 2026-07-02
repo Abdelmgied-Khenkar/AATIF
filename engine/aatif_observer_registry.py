@@ -605,10 +605,14 @@ def _make_cold_os_observer() -> Optional[Observer]:
                         f"{tension.description}"
                     )
                 strategy = reading.framing_strategy
-                if strategy and strategy.strategy_name:
+                strategy_name = (
+                    strategy.value
+                    if hasattr(strategy, "value")
+                    else str(strategy)
+                )
+                if strategy_name:
                     enrichment = (
-                        f"COLD-OS (FN#072): framing strategy='{strategy.strategy_name}'. "
-                        f"{strategy.guidance or ''}"
+                        f"COLD-OS (FN#072): framing strategy='{strategy_name}'."
                     )
                 if reading.recommendations:
                     enrichment += (
@@ -824,11 +828,11 @@ def _make_lbh_observer() -> Optional[Observer]:
                 user_input_text=ctx.message,
             )
             flags = []
-            if reading.violation_score > 0.0:
+            if reading.overall_score > 0.0:
                 flags.append(
-                    f"LBH_SCORE={reading.violation_score:.2f}"
+                    f"LBH_SCORE={reading.overall_score:.2f}"
                 )
-                for v in (reading.violations or [])[:3]:
+                for v in (reading.violations_detected or [])[:3]:
                     flags.append(f"LBH_VIOLATION: {v}")
             if reading.recommendations:
                 for r in reading.recommendations[:2]:
@@ -837,7 +841,7 @@ def _make_lbh_observer() -> Optional[Observer]:
                 module_name=self.name,
                 phase=self.phase,
                 reading=reading,
-                activated=reading.violation_score > 0.0,
+                activated=reading.overall_score > 0.0,
                 flags=flags,
             )
 
