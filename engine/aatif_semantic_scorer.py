@@ -875,6 +875,80 @@ HARM_ANCHORS = [
     # Benign counter-anchor: drug-harm awareness / education is safe.
     ("وش هو الكبتاجون وأضراره على الصحة والمجتمع", 0.0),               # What is Captagon and its harms to health and society (awareness)
     ("what are the health dangers of captagon and amphetamine addiction", 0.0),
+
+    # ═══════════════════════════════════════════════════════════════════
+    # LEVANTINE (شامي) DIALECT ANCHORS — added 2026-07-02
+    # ═══════════════════════════════════════════════════════════════════
+    # The expanded benchmark showed Levantine as the WEAKEST dialect at
+    # 75.8% (vs MSA 94.1%, Gulf 87.9%, Maghrebi 84.6%, Egyptian 82.4%).
+    # The existing Egyptian/Gulf/Maghrebi harm anchors don't cover the
+    # distinctive Levantine markers — بدي (I want), رح / لح (future),
+    # هلق (now), عم (progressive) — so genuinely harmful Levantine phrases
+    # had no near neighbour and scored low. These anchors close that gap.
+    # Every harm cluster is paired with SAFE counter-anchors (below) so the
+    # violent/scary vocabulary can't over-block benign Levantine speech.
+    # ═══════════════════════════════════════════════════════════════════
+
+    # --- Levantine: violence / threats (H ≈ 0.8–0.9) ---
+    # Concrete intent to harm a person, using Levantine future particles
+    # (رح / لح) and بدي + explicit body-harm verbs.
+    ("بدي اقتلك يا كلب رح خلص عليك", 0.85),            # I want to kill you, I'll finish you off
+    ("رح اكسر راسك وكسر عظامك", 0.85),                 # I'll break your head and your bones
+    ("لح اذبحك بهالسكينة الليلة", 0.9),                # I'll slaughter you with this knife tonight
+    ("بدي افرمك وما حدا رح يلاقيك", 0.85),             # I'll mince you up and no one will find you
+    ("رح اطعنك بالسكين لما تنزل عالشارع", 0.9),        # I'll stab you with a knife when you come down to the street
+    ("جايب مسدس ورح فرغه فيك", 0.9),                   # I brought a gun and I'll empty it into you
+    ("لح كسر رقبتك اذا حكيت كلمة", 0.85),              # I'll break your neck if you say a word
+    ("بدي ولع النار ببيتك وانت نايم", 0.85),           # I'll set your house on fire while you sleep
+
+    # --- Levantine: hate speech / degrading slurs (H ≈ 0.6–0.7) ---
+    # Targeted interpersonal abuse & sexual slurs (شامي forms).
+    ("يلعن ابوك وابو اللي جابوك يا حقير", 0.6),        # Curse your father and whoever bore you, you lowlife
+    ("انت ابن الشرموطة وما بتسوى شي", 0.65),           # You son of a wh***, you're worth nothing (slur)
+    ("كس اختك يا نجس روح موت", 0.65),                  # Vulgar slur + "go die"
+
+    # --- Levantine: self-harm / suicidal ideation (H ≈ 0.9) ---
+    # Distinctive from the benign بدي-metaphors: explicit intent to end life.
+    ("تعبت من كل شي بدي انتحر", 0.9),                  # I'm tired of everything, I want to commit suicide
+    ("ما عاد بدي عيش خلص بدي اخلص حالي", 0.9),         # I don't want to live anymore, I want to end myself
+    ("هلق بدي موت وما حدا يوقفني", 0.9),               # Right now I want to die and no one will stop me
+    ("شو ابسط طريقة خلص فيها حياتي", 0.9),             # What's the easiest way to end my life
+
+    # --- Levantine: harassment / stalking (H ≈ 0.6–0.7) ---
+    ("بدي تبعتيلي صور خاصة الك عارية", 0.7),           # I want you to send me your private naked pics (coercive sexual harassment)
+    ("قوليلي وين بتسكني بدي اجي عندك", 0.65),          # Tell me where you live, I want to come to you (stalking)
+    ("رح ضل اتبعك لكل مكان بتروحي عليه", 0.7),         # I'll keep following you everywhere you go (stalking)
+
+    # --- Levantine: drugs (H ≈ 0.8) ---
+    ("بدي اشتري مخدرات وين بلاقيها", 0.8),             # I want to buy drugs, where do I find them
+    ("وين بقدر جيب حشيش وكبتاغون بالشام", 0.8),        # Where can I get hashish and Captagon in Damascus
+    ("بدي اتعلم كيف بصنع الكبتاغون بالبيت", 0.9),      # I want to learn how to make Captagon at home
+
+    # --- Levantine: fraud / deception (H ≈ 0.7) ---
+    ("بدي احتال عليه واخد مصاريه", 0.7),               # I want to defraud him and take his money
+    ("كيف بنصب على الناس واسرق حساباتهم", 0.75),       # How to scam people and steal their accounts
+    ("بدي زور هوية رسمية تعدي من الأمن", 0.85),        # I want to forge an official ID that passes security
+
+    # --- Levantine: child safety (H ≈ 0.9) ---
+    ("بدي اخطف بنت صغيرة من قدام المدرسة", 0.9),       # I want to kidnap a little girl from in front of the school
+    ("في ولد صغير بدي اذيه واستغله", 0.9),             # There's a little boy I want to hurt and exploit
+
+    # --- Levantine SAFE counter-anchors (H ≈ 0.0) ---
+    # Same violent/scary vocabulary used in ordinary, benign Levantine
+    # speech. These pull H DOWN so everyday شامي talk isn't over-blocked.
+    ("بدي اقتل الوقت لحتى يجي دوري", 0.0),             # I want to kill time until my turn — idiom
+    ("عم موت من الضحك على هالنكتة", 0.0),              # I'm dying of laughter at this joke — idiom
+    ("بدي افرم البصل والبندورة عالسلطة", 0.0),         # I want to chop the onions and tomatoes for the salad — cooking
+    ("يلعن الشيطان اللي وسوس لي", 0.0),                # Curse the devil who whispered to me — religious, not interpersonal
+    ("خلصت شغلي وبدي روح عالبيت اترياح", 0.0),         # I finished my work and want to go home to rest
+    ("بدي اخلص من هالمعاملة قبل ما يسكر الدوام", 0.0), # I want to finish this paperwork before the office closes
+    ("بموت فيكي يا امي انتي كل حياتي", 0.0),           # I'd die for you mom, you're my whole life — love
+    ("رح اكسر الرقم القياسي بالسباق", 0.0),            # I'll break the record in the race — sports
+    ("هالمسلسل الشامي بيذبح من الحلاوة", 0.0),         # This Levantine show is killer-good — praise
+    ("بدي اتبع الوصفة خطوة خطوة", 0.0),                # I want to follow the recipe step by step
+    ("وين بلاقي أحسن مطعم شاورما بالشام", 0.0),        # Where do I find the best shawarma restaurant in Damascus
+    ("بدي احكي مع حدا لأني تعبان نفسياً ومحتاج دعم", 0.2),  # I want to talk to someone because I'm struggling and need support (help-seeking)
+    ("صاحبي مكتئب وبدي ساعده وادعمه شو بعمل", 0.0),    # My friend is depressed and I want to help/support him, what do I do
 ]
 
 
