@@ -93,6 +93,17 @@ from aatif_drift_detector import (
 )
 import aatif_uncertainty_detector as _uc_mod
 from aatif_uncertainty_detector import UncertaintyDetector, UncertaintyReading
+from aatif_domain_config import (                        # Phase 3
+    DomainConfig as _DomainConfigDC,
+    GatedProfile as _GatedProfileDC,
+    SafetyDecision,
+    EquationMode,
+    DOMAIN_CONFIGS as _DOMAIN_CONFIGS_FROZEN,
+    GATED_PROFILE_CONFIGS as _GATED_PROFILE_CONFIGS_FROZEN,
+    get_domain_config as _get_domain_config,
+    get_domain_alpha,
+    get_gated_profile as _get_gated_profile,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -502,50 +513,14 @@ PROFILES = {
 #
 # Hard override: H > 0.7 → SAFE_FREEZE regardless of other scores.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# GATED PROFILES — backward-compatible dict view of frozen GatedProfile
+# instances from aatif_domain_config.  Source of truth is the frozen
+# dataclass; this dict is derived for callers that do p["alpha"], etc.
+# Phase 3: source of truth is now _GATED_PROFILE_CONFIGS_FROZEN.
+# ---------------------------------------------------------------------------
 GATED_PROFILES = {
-    "default": {
-        "w1": 2.0,     # intent weight
-        "w2": 1.5,     # emotion weight
-        "alpha": 10,   # gate steepness
-        "theta": 0.40, # harm threshold — kept at 0.40: raising it to 0.45 reopened
-                       # the spousal-surveillance hole (H=0.40 → CLARIFY). The
-                       # 2026-06-20 precision fix is carried by the H "safe"
-                       # anchors instead, not by θ. (see fix_comparison.md)
-        "desc": "Balanced gate — moderate steepness, gate center at H=0.40 (calibrated 2026-06-19)"
-    },
-    "high_sensitivity": {
-        "w1": 2.0,
-        "w2": 1.0,
-        "alpha": 15,   # steeper gate → narrower transition zone
-        "theta": 0.30, # gate center BELOW default (0.40) so it closes earlier =
-                       # catches harm sooner. Fixed 2026-06-20: was 0.45, which
-                       # sat ABOVE default and made the "high sensitivity" gate
-                       # MORE permissive than default across H∈[0.20,0.50] — a
-                       # logic inversion contradicting the profile's purpose,
-                       # its own comment, and the v9.7 spec (θ=0.30). Gate
-                       # ordering now: high_sensitivity ≤ default ≤ relaxed.
-        "desc": "Conservative gate — triggers earlier (θ=0.30), sharper cutoff"
-    },
-    "relaxed": {
-        "w1": 3.0,
-        "w2": 2.5,
-        "alpha": 8,    # gentler slope → wider transition
-        "theta": 0.55, # higher threshold → more tolerant
-        "desc": "Permissive gate — intent-driven, wider tolerance"
-    },
-    # M2 NOTE: balanced_strict is INTENTIONALLY kept. It was calibrated
-    # during A/B testing (2026-06-19) for edge cases where the default
-    # profile missed surveillance/espionage patterns. Although its
-    # weights match default, it exists as a named profile for domain
-    # configs that need to reference it explicitly. Remove ONLY if no
-    # DOMAIN_CONFIG or external caller references "balanced_strict".
-    "balanced_strict": {
-        "w1": 2.0,
-        "w2": 1.5,
-        "alpha": 10,   # same steepness as default
-        "theta": 0.40, # same θ as default — the profile exists for naming, not divergent weights
-        "desc": "Calibrated via A/B test (2026-06-19) — identical to default, kept as named reference"
-    },
+    name: gp.to_dict() for name, gp in _GATED_PROFILE_CONFIGS_FROZEN.items()
 }
 
 # ---------------------------------------------------------------------------
@@ -568,31 +543,14 @@ GATED_PROFILES = {
 # Architect: "θ varies by domain, not by time"
 # Design session: 2026-06-22
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# DOMAIN_CONFIG — backward-compatible dict view of frozen DomainConfig
+# instances from aatif_domain_config.  Source of truth is the frozen
+# dataclass; this dict is derived for callers that do cfg["theta"], etc.
+# Phase 3: source of truth is now _DOMAIN_CONFIGS_FROZEN.
+# ---------------------------------------------------------------------------
 DOMAIN_CONFIG = {
-    "healthcare": {
-        "theta": 0.25,
-        "desc": "Medical/health context — gate closes early, harm is physical",
-    },
-    "education": {
-        "theta": 0.30,
-        "desc": "Children/students — gate closes early, harm is developmental",
-    },
-    "general": {
-        "theta": 0.40,
-        "desc": "Default — balanced gate (same as calibrated default profile)",
-    },
-    "tech": {
-        "theta": 0.40,
-        "desc": "Technical support — same as general",
-    },
-    "ecommerce": {
-        "theta": 0.40,
-        "desc": "Commercial/shopping — same as general",
-    },
-    "creative": {
-        "theta": 0.50,
-        "desc": "Creative writing/art — wider tolerance for sensitive topics",
-    },
+    name: dc.to_dict() for name, dc in _DOMAIN_CONFIGS_FROZEN.items()
 }
 
 
@@ -850,7 +808,11 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
     """
     p = GATED_PROFILES[profile]
     w1, w2 = p["w1"], p["w2"]
-    alpha = p["alpha"]
+    profile_alpha = p["alpha"]
+
+    # α(d): domain can override profile alpha (Phase 3 — per-domain gate steepness).
+    # Healthcare needs sharper gate; creative can use gentler slope.
+    alpha = get_domain_alpha(domain, profile_alpha)
 
     # θ(d): domain overrides profile theta when specified.
     # This is the core of domain-parameterized governance.
@@ -881,6 +843,8 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
         S = quality * gate
         F_prime = 1.0 * (1.0 - S)
         F = max(F_prime, K_HARM_FLOOR * H_eff)
+        # Determine alpha source for audit trail
+        _alpha_source = "domain" if (domain and alpha != profile_alpha) else "profile"
         return {
             "H": round(H, 4),
             "H_eff": round(H_eff, 4),
@@ -897,6 +861,8 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
             "domain": domain,
             "theta_effective": round(theta, 4),
             "theta_source": theta_source,
+            "alpha_effective": alpha,
+            "alpha_source": _alpha_source,
             "equation_mode": "gated",
             "hard_override": True,
         }
@@ -918,6 +884,8 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
             decision = label
             break
 
+    # Determine alpha source for audit trail
+    alpha_source = "domain" if (domain and alpha != profile_alpha) else "profile"
     return {
         "H": round(H, 4),
         "H_eff": round(H_eff, 4),
@@ -934,6 +902,8 @@ def compute_s_gated_from_scores(H: float, I: float, E: float,
         "domain": domain,
         "theta_effective": round(theta, 4),
         "theta_source": theta_source,
+        "alpha_effective": alpha,
+        "alpha_source": alpha_source,
         "equation_mode": "gated",
         "hard_override": False,
     }

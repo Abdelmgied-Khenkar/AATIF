@@ -252,8 +252,8 @@ class TestMathVerification:
     """Verify the gate math with domain theta matches hand calculations."""
 
     def test_gate_value_healthcare(self):
-        """Manually verify gate = 1 - σ(α·(H - θ)) with healthcare θ."""
-        H, alpha, theta = 0.35, 10, 0.25  # healthcare
+        """Manually verify gate = 1 - σ(α·(H - θ)) with healthcare θ and per-domain α."""
+        H, alpha, theta = 0.35, 15, 0.25  # healthcare (Phase 3: α=15 per-domain)
         expected_gate = 1.0 - sigmoid(alpha * (H - theta))
 
         r = compute_s_gated_from_scores(H, 0.7, 0.6, domain="healthcare")
@@ -269,16 +269,16 @@ class TestMathVerification:
 
     def test_healthcare_gate_much_lower_at_h035(self):
         """
-        At H=0.35:
-          healthcare: gate = 1 - σ(10·(0.35 - 0.25)) = 1 - σ(1.0) ≈ 0.269
+        At H=0.35 (Phase 3: per-domain alpha):
+          healthcare: gate = 1 - σ(15·(0.35 - 0.25)) = 1 - σ(1.5) ≈ 0.182
           general:    gate = 1 - σ(10·(0.35 - 0.40)) = 1 - σ(-0.5) ≈ 0.622
 
-        Healthcare gate is ~0.27, general gate is ~0.62.
-        That's a massive difference — healthcare is 2.3× more restrictive.
+        Healthcare gate is ~0.18, general gate is ~0.62.
+        That's an even larger difference with per-domain α — healthcare is 3.4× more restrictive.
         """
         H = 0.35
-        gate_health = 1.0 - sigmoid(10 * (H - 0.25))
-        gate_general = 1.0 - sigmoid(10 * (H - 0.40))
+        gate_health = 1.0 - sigmoid(15 * (H - 0.25))   # α=15 per-domain
+        gate_general = 1.0 - sigmoid(10 * (H - 0.40))   # α=10 (profile default)
 
         assert gate_health < 0.30, f"Healthcare gate should be < 0.30, got {gate_health:.4f}"
         assert gate_general > 0.60, f"General gate should be > 0.60, got {gate_general:.4f}"
